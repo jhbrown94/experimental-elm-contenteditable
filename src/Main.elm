@@ -1,133 +1,108 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import Browser
-import Html exposing (..)
-import Html.Attributes as Attributes exposing (contenteditable, style)
-import Html.Events as Events
-import Html.Keyed as Keyed
+import Html
+import Html.Attributes
+import Html.Parser as Parser exposing (..)
+import Html.Parser.Util
 import Json.Decode as Json
-import Keyboard.Event
 
 
-type alias KeyedList =
-    List ( String, Document )
+
+-- import Keyboard.Event
 
 
-type Document
-    = Text String
-    | Paragraph KeyedList
-    | Sequence KeyedList
-    | Bullets KeyedList
+port setContent : ( String, String ) -> Cmd msg
+
+
+port receiveContent : (String -> msg) -> Sub msg
+
+
+fixText html =
+    case html of
+        Text string ->
+            Text (String.replace "*" "..." string)
+
+        Element kind attrs children ->
+            Element kind attrs (List.map fixText children)
+
+        Comment x ->
+            html
 
 
 exampleDoc =
-    Sequence
-        [ ( "1", Paragraph [ ( "a", Text "Begin here" ) ] )
-        , ( "2"
-          , Bullets
-                [ ( "b", Text "first item" )
-                , ( "c"
-                  , Sequence
-                        [ ( "d", Text "next item" )
-                        , ( "e", Bullets [ ( "f", Text "Nested item" ) ] )
-                        ]
-                  )
+    Element "div"
+        []
+        [ Element "p" [] [ Text "Begin here" ]
+        , Element "ul"
+            []
+            [ Element "li" [] [ Text "first item" ]
+            , Element "ul"
+                []
+                [ Element "li" [] [ Text "next item" ]
+                , Element "li" [] [ Text "Nested item" ]
                 ]
-          )
-        , ( "3", Text "End here" )
-        , ( "4", Text ". Finale." )
+            ]
+        , Text "End here"
+        , Text ". Finale."
         ]
-
-
-addBullet : Document -> Document
-addBullet document =
-    let
-        recurse list =
-            List.map (Tuple.mapSecond addBullet) list
-    in
-    case document of
-        Bullets list ->
-            Bullets <| List.append (recurse list) [ ( "QQQ", Text "Bullet added." ) ]
-
-        Sequence list ->
-            Sequence (recurse list)
-
-        Paragraph list ->
-            Paragraph (recurse list)
-
-        Text s ->
-            document
-
-
-viewDocument : Document -> Html Msg
-viewDocument document =
-    let
-        recurse list =
-            List.map (Tuple.mapSecond viewDocument) list
-    in
-    case document of
-        Text s ->
-            text s
-
-        Sequence list ->
-            Keyed.node "div" [] (recurse list)
-
-        Paragraph list ->
-            Keyed.node "p" [] (recurse list)
-
-        Bullets list ->
-            Keyed.ul [] (recurse list |> List.map (Tuple.mapSecond (\x -> li [] [ x ])))
-
-
-onKeydown =
-    Events.preventDefaultOn "keydown" (Keyboard.Event.decodeKeyboardEvent |> Json.map handleKeydown)
-
-
-handleKeydown : Keyboard.Event.KeyboardEvent -> ( Msg, Bool )
-handleKeydown event =
-    if event.key == Just "*" then
-        ( StarPressed, True )
-
-    else
-        ( NoOp, False )
 
 
 view model =
-    div []
-        [ div [ Events.onClick AddBulletClicked ]
-            [ text "Add bullet" ]
-        , div
-            [ contenteditable True, onKeydown ]
-            [ viewDocument model ]
-        ]
+    Html.div
+        []
+        [ Html.text "this is straight from Elm" ]
 
 
 type alias Model =
-    Document
+    Node
 
 
 type Msg
-    = AddBulletClicked
-    | StarPressed
-    | NoOp
+    = NoOp
+    | SetContent
+    | ReceiveContent String
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        AddBulletClicked ->
-            model |> addBullet
+        SetContent ->
+            ( model, setContent ( "editor", nodeToString model ) )
 
-        StarPressed ->
-            model |> addBullet
+        ReceiveContent string ->
+            let
+                newModel =
+                    string
+                        |> Parser.run
+                        |> Result.withDefault [ Text "Parse failed" ]
+                        |> List.head
+                        |> Maybe.withDefault (Text "Parse failed")
+                        |> fixText
+            in
+            if model == newModel then
+                ( model, Cmd.none )
+
+            else
+                update SetContent newModel
 
         NoOp ->
-            model
+            ( model, Cmd.none )
 
 
+type alias Flags =
+    ()
+
+
+subscriptions model =
+    receiveContent ReceiveContent
+
+
+main : Program Flags Model Msg
 main =
-    Browser.sandbox
-        { init = exampleDoc
+    Browser.element
+        { init = \_ -> ( exampleDoc, setContent ( "editor", nodeToString exampleDoc ) )
+        , subscriptions = subscriptions
         , view = view
         , update = update
         }
