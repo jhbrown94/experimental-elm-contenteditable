@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import CEDom
 import Html
 import Html.Attributes
 import Html.Parser as Parser exposing (..)

@@ -1,0 +1,43 @@
+<!DOCTYPE HTML>
+<html>
+<meta name="viewport" content="initial-scale=1.0">
+<head>
+  <meta charset="UTF-8">
+  <title>CEDom</title>
+  <script src="main.js"></script>
+</head>
+
+<body>
+  <div id="elm"></div>
+  <div id="editor" contenteditable="true" style="width: 640px; height: 480px; border-width: 2px;"></div>
+
+  <script>
+      var app = Elm.Main.init({
+        node: document.getElementById('elm')
+        , flags: null
+    });
+
+
+    var node = document.getElementById("editor");
+    var obs = new MutationObserver(handleMutation);
+    obs.observe(node, {subtree: true, childList: true, attributes: true, characterData: true});
+
+
+    function handleMutation(mutations, observer) {
+        console.log("Sending update");
+        app.ports.receiveContent.send(node.innerHTML);
+    }
+
+
+    app.ports.setContent.subscribe(function(data) {
+        console.log("Got data", data);
+        var node = document.getElementById(data[0]);
+        console.log("Node is ", node)
+        node.innerHTML = data[1]
+    });
+
+
+
+</script>
+</body>
+</html>
