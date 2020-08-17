@@ -1,9 +1,10 @@
-module HtmlFromJs exposing (..)
+port module HtmlFromJs exposing (..)
 
 import Browser
 import Dict
 import Html as H
 import Html.Attributes as HA
+import Json.Decode as Decode
 import Maybe.Extra as MaybeX
 
 
@@ -21,6 +22,15 @@ type alias Node =
     , parentNode : Maybe NodeRef
     , content : Content
     }
+
+
+decodeNode =
+    Decode.map5 Node
+        (Decode.field "ref" decodeNodeRef)
+        (Decode.field "previousSibling" decodeMaybeNodeRef)
+        (Decode.field "nextSibling" decodeMaybeNodeRef)
+        (Decode.field "parentNode" decodeMaybeNodeRef)
+        (Decode.field "content" decodeContent)
 
 
 type alias NodeRef =
@@ -42,9 +52,45 @@ type Content
 
 type alias HtmlRep =
     { kind : String
-    , attributes : Dict.Dict String String
+    , attributes : Attributes
     , firstChild : Maybe NodeRef
     }
+
+
+decodeContent =
+    Decode.field "type" Decode.string
+        |> Decode.andThen
+            (\type_ ->
+                case type_ of
+                    "text" ->
+                        decodeTextContent
+
+                    "html" ->
+                        decodeHtmlContent
+
+                    _ ->
+                        logError "Unknown node type" type_ (Decode.fail ("Unknown node type " ++ type_))
+            )
+
+
+decodeTextContent =
+    Decode.map Text (Decode.field "value" Decode.string)
+
+
+decodeHtmlContent =
+    Decode.map HtmlNode <|
+        Decode.map3 HtmlRep
+            (Decode.field "tag" Decode.string)
+            (Decode.field "attributes" decodeAttributes)
+            (Decode.field "firstChild" decodeMaybeNodeRef)
+
+
+type alias Attributes =
+    Dict.Dict String String
+
+
+decodeAttributes =
+    Decode.dict Decode.string
 
 
 firstChild html =
@@ -142,15 +188,15 @@ appendChild childRef parentRef domFragment =
 -- https://developer.mozilla.org/en-US/docs/Web/API/MutationRecord
 
 
-type Mutation
-    = AttributeMutation String (Maybe String)
+type MutationPayload
+    = AttributeMuxation String (Maybe String)
     | CharacterData String
     | ChildListMutation ChildListRep
 
 
 type alias MutationRecord =
     { target : NodeRef
-    , mutation : Mutation
+    , mutation : MutationPayload
     }
 
 
@@ -160,6 +206,63 @@ type alias ChildListRep =
     , previousSibling : Maybe NodeRef
     , nextSibling : Maybe NodeRef
     }
+
+
+decodeMutationRecord =
+    Decode.map2 MutationRecord
+        (Decode.field "target" decodeNodeRef)
+        (Decode.field "mutation" decodeMutationContent)
+
+
+decodeMutationContent : Decode.Decoder MutationPayload
+decodeMutationContent =
+    Decode.field "type" Decode.string
+        |> Decode.andThen
+            (\type_ ->
+                case type_ of
+                    "attributes" ->
+                        decodeAttributeMuxation
+
+                    "characterData" ->
+                        decodeCharacterDataMutation
+
+                    "childList" ->
+                        decodeChildListMutation
+
+                    _ ->
+                        logError "Unknown MutationRecord type" type_ (Decode.fail ("Unknown MutationRecord type " ++ type_))
+            )
+
+
+decodeAttributeMuxation =
+    Decode.map2 AttributeMuxation
+        (Decode.field "attributeName" Decode.string)
+        (Decode.field "attributeValue" (Decode.nullable Decode.string))
+
+
+decodeCharacterDataMutation =
+    Decode.map CharacterData (Decode.field "characterValue" Decode.string)
+
+
+decodeChildListMutation =
+    Decode.map ChildListMutation <|
+        Decode.map4 ChildListRep
+            (Decode.field "addedNodes" decodeNodeRefList)
+            (Decode.field "removedNodes" decodeNodeRefList)
+            (Decode.field "previousSibling" decodeMaybeNodeRef)
+            (Decode.field "nextSibling" decodeMaybeNodeRef)
+
+
+decodeNodeRef =
+    Decode.int
+
+
+decodeMaybeNodeRef =
+    Decode.nullable Decode.int
+
+
+decodeNodeRefList =
+    Decode.list decodeNodeRef
 
 
 
@@ -172,13 +275,13 @@ applyMutationRecord { target, mutation } domFragment =
             getNode target domFragment
     in
     case ( node.content, mutation ) of
-        ( Text _, AttributeMutation _ _ ) ->
+        ( Text _, AttributeMuxation _ _ ) ->
             logError "Trying to change attribute on a text node" ( node, mutation ) domFragment
 
-        ( HtmlNode html, AttributeMutation name (Just value) ) ->
+        ( HtmlNode html, AttributeMuxation name (Just value) ) ->
             Dict.insert target { node | content = HtmlNode { html | attributes = Dict.insert name value html.attributes } } domFragment
 
-        ( HtmlNode html, AttributeMutation name Nothing ) ->
+        ( HtmlNode html, AttributeMuxation name Nothing ) ->
             Dict.insert target { node | content = HtmlNode { html | attributes = Dict.remove name html.attributes } } domFragment
 
         ( Text _, CharacterData value ) ->
@@ -295,7 +398,99 @@ applyMutationRecord { target, mutation } domFragment =
 
 
 
+-- JS Port protocol
+
+
+type JsMsg
+    = JSMutation MutationRecord
+    | NewHtmlNode NewHtmlNodeDescriptor
+    | NewTextNode NewTextNodeDescriptor
+
+
+decodeJsMsg =
+    Decode.field "type" Decode.string
+        |> Decode.andThen
+            (\type_ ->
+                Decode.field "data" <|
+                    case type_ of
+                        "MutationRecord" ->
+                            Decode.map JSMutation decodeMutationRecord
+
+                        "NewHtmlNode" ->
+                            Decode.map NewHtmlNode decodeNewHtmlNode
+
+                        "NewTextNode" ->
+                            Decode.map NewTextNode decodeNewTextNode
+
+                        _ ->
+                            Decode.fail ("Unknown message type from Javascript: " ++ type_)
+            )
+
+
+type alias NewHtmlNodeDescriptor =
+    { ref : NodeRef
+    , kind : String
+    , attributes : Attributes
+    }
+
+
+decodeNewHtmlNode =
+    Decode.map3 NewHtmlNodeDescriptor
+        (Decode.field "ref" decodeNodeRef)
+        (Decode.field "tag" Decode.string)
+        (Decode.field "attributes" decodeAttributes)
+
+
+type alias NewTextNodeDescriptor =
+    { ref : NodeRef
+    , text : String
+    }
+
+
+decodeNewTextNode =
+    Decode.map2 NewTextNodeDescriptor
+        (Decode.field "ref" decodeNodeRef)
+        (Decode.field "text" Decode.string)
+
+
+type alias JsMsgList =
+    List JsMsg
+
+
+decodeJsMsgList =
+    Decode.list decodeJsMsg
+
+
+port receiveMessage : (Decode.Value -> msg) -> Sub msg
+
+
+applyJsMessage : JsMsg -> DomFragment -> DomFragment
+applyJsMessage msg frag =
+    case msg of
+        JSMutation mutation ->
+            applyMutationRecord mutation frag
+
+        NewHtmlNode html ->
+            applyNewHtmlNode html frag
+
+        NewTextNode text_ ->
+            applyNewTextNode text_ frag
+
+
+applyNewHtmlNode html frag =
+    Dict.insert html.ref { ref = html.ref, previousSibling = Nothing, nextSibling = Nothing, parentNode = Nothing, content = HtmlNode { kind = html.kind, attributes = html.attributes, firstChild = Nothing } } frag
+
+
+applyNewTextNode text_ frag =
+    Dict.insert text_.ref { ref = text_.ref, previousSibling = Nothing, nextSibling = Nothing, parentNode = Nothing, content = Text text_.text } frag
+
+
+
 -- errors
+
+
+logInfo =
+    logError
 
 
 logError message logValue returnValue =
@@ -311,7 +506,7 @@ logError message logValue returnValue =
 
 
 type Msg
-    = NoOp
+    = JsMessages Decode.Value
 
 
 type alias Model =
@@ -324,26 +519,37 @@ init flags =
         ( frag, rootRef ) =
             newDomFragment (HtmlNode { kind = "div", attributes = Dict.empty, firstChild = Nothing })
 
-        frag_ =
-            frag
-                |> addNode (rootRef + 1) (Text "hello world")
-                |> addNode (rootRef + 2) (Text " Middle world")
-                |> addNode (rootRef + 3) (Text " End world")
-                |> addNode (rootRef + 4) (HtmlNode { kind = "div", attributes = Dict.empty, firstChild = Nothing })
-                |> appendChild (rootRef + 1) rootRef
-                |> appendChild (rootRef + 2) rootRef
-                |> appendChild (rootRef + 4) rootRef
-                |> appendChild (rootRef + 3) (rootRef + 4)
+        --frag_ =
+        --    frag
+        --        |> addNode (rootRef + 1) (Text "hello world")
+        --        |> addNode (rootRef + 2) (Text " Middle world")
+        --        |> addNode (rootRef + 3) (Text " End world")
+        --        |> addNode (rootRef + 4) (HtmlNode { kind = "div", attributes = Dict.empty, firstChild = Nothing })
+        --        |> appendChild (rootRef + 1) rootRef
+        --        |> appendChild (rootRef + 2) rootRef
+        --        |> appendChild (rootRef + 4) rootRef
+        --        |> appendChild (rootRef + 3) (rootRef + 4)
     in
-    ( { frag = frag_ }, Cmd.none )
+    ( { frag = frag }, Cmd.none )
 
 
 update msg model =
-    ( model, Cmd.none )
+    case msg of
+        JsMessages value ->
+            case Decode.decodeValue decodeJsMsgList value of
+                Ok msgList ->
+                    let
+                        frag =
+                            List.foldl applyJsMessage model.frag msgList
+                    in
+                    ( { model | frag = frag }, Cmd.none )
+
+                Err err ->
+                    logError "Failed to decode message from JS: " (Decode.errorToString err) ( model, Cmd.none )
 
 
 subscriptions model =
-    Sub.none
+    receiveMessage JsMessages
 
 
 view : Model -> H.Html Msg

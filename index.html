@@ -12,7 +12,7 @@
   <div id="editor" contenteditable="true" style="width: 640px; height: 480px; border-width: 2px;"></div>
 
   <script>
-      var app = Elm.Main.init({
+      var app = Elm.HtmlFromJs.init({
         node: document.getElementById('elm')
         , flags: null
     });
@@ -20,21 +20,75 @@
 
     var node = document.getElementById("editor");
     var obs = new MutationObserver(handleMutation);
-    obs.observe(node, {subtree: true, childList: true, attributes: true, characterData: true});
+    obs.observe(node, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
+    var nodeRef = 0;
+
+    function ensureRef(node, messages) {
+        if (node && node.elmCERef === undefined) {
+            node.elmCERef = nodeRef++;
+
+            if (node instanceof Text) {
+                messages.push({'type': 'NewTextNode', 'data': {'ref': node.elmCERef, 'text': node.data}});
+            } else
+            if (node instanceof HTMLElement) {
+                messages.push({'type': 'NewHtmlNode', 'data': {'ref': node.elmCERef, 'tag': node.nodeName.toLowerCase(), 'attributes': {}}});
+
+                if (node.childNodes.length > 0) {
+                    Array.prototype.forEach.call(node.childNodes, child => ensureRef(child, messages));
+                    messages.push({'type': 'MutationRecord', 'data' : {'target': node.elmCERef, 'mutation': {'type': 'childList', 'nextSibling': null, 'previousSibling': null, 'removedNodes': [], 
+                        'addedNodes': Array.prototype.map.call(node.childNodes, node => node.elmCERef)}}});
+                }
+            }
+        }
+    }
+
+    ensureRef(node, []);
 
     function handleMutation(mutations, observer) {
-        console.log("Sending update");
-        app.ports.receiveContent.send(node.innerHTML);
+        console.log('Sending update');
+        var messages = []
+        console.log('start loop');
+        for (var mutation of mutations) {
+            ensureRef(mutation.target, messages);
+            var messageJson = {'type': 'MutationRecord', 
+            'data': {'target': mutation.target.elmCERef, 'mutation': {'type': mutation.type}}};
+            var mutationJson = messageJson.data.mutation;
+
+            switch (mutation.type) {
+                case 'attributes': 
+                    break;
+                case 'characterData':
+                    mutationJson.characterValue = mutation.target.data;
+                    messages.push(messageJson);
+                    break;
+                case 'childList':
+                    ensureRef(mutation.previousSibling, messages);
+                    mutationJson.previousSibling = mutation.previousSibling ? mutation.previousSibling.elmCERef : null;
+                    ensureRef(mutation.nextSibling, messages);
+                    mutationJson.nextSibling = mutation.nextSibling ? mutation.nextSibling.elmCERef : null;
+                    Array.prototype.forEach.call(mutation.removedNodes, node => ensureRef(node, messages));
+                    mutationJson.removedNodes = Array.prototype.map.call(mutation.removedNodes, node => node.elmCERef);
+                    Array.prototype.forEach.call(mutation.addedNodes, node => ensureRef(node, messages));
+                    mutationJson.addedNodes = Array.prototype.map.call(mutation.addedNodes, node => node.elmCERef);
+                    messages.push(messageJson);
+                    break;
+                default: 
+                    console.log('Unknown mutation type ', mutation.type, mutation);
+            }
+        }
+        console.log('end loop', messages);
+
+        app.ports.receiveMessage.send(messages);
     }
 
 
-    app.ports.setContent.subscribe(function(data) {
-        console.log("Got data", data);
-        var node = document.getElementById(data[0]);
-        console.log("Node is ", node)
-        node.innerHTML = data[1]
-    });
+    // app.ports.setContent.subscribe(function(data) {
+    //     console.log("Got data", data);
+    //     var node = document.getElementById(data[0]);
+    //     console.log("Node is ", node)
+    //     node.innerHTML = data[1]
+    // });
 
 
 
