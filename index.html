@@ -46,10 +46,10 @@
     ensureRef(node, []);
 
     function handleMutation(mutations, observer) {
-        console.log('Sending update');
+        //console.log('Sending update');
         var messages = []
         var removedNodeRefs = new Set();
-        console.log('start loop');
+        // console.log('start loop');
         for (var mutation of mutations) {
             ensureRef(mutation.target, messages);
             var messageJson = {'type': 'MutationRecord', 
@@ -80,12 +80,12 @@
                     messages.push(messageJson);
                     break;
                 default: 
-                    console.log('Unknown mutation type ', mutation.type, mutation);
+                    //console.log('Unknown mutation type ', mutation.type, mutation);
             }
         }
-        console.log('end loop', messages);
+        // console.log('end loop', messages);
         for (removedNodeRef of removedNodeRefs) {
-            messages.push({'type': 'RemoveNode', 'ref': removedNodeRef});
+            messages.push({'type': 'RemoveNode', 'data': {'ref': removedNodeRef}});
         }
         app.ports.receiveMessage.send(messages);
     }

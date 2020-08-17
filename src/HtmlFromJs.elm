@@ -458,7 +458,7 @@ decodeNewTextNode =
 
 
 decodeRemoveNode =
-    Decode.map RemoveNode (Decode.field "ref" decodeNodeRef)
+    Decode.field "ref" decodeNodeRef
 
 
 type alias JsMsgList =
@@ -484,6 +484,9 @@ applyJsMessage msg frag =
         NewTextNode text_ ->
             applyNewTextNode text_ frag
 
+        RemoveNode ref ->
+            applyRemoveNode ref frag
+
 
 applyNewHtmlNode html frag =
     Dict.insert html.ref
@@ -505,6 +508,10 @@ applyNewTextNode text_ frag =
         , content = Text text_.text
         }
         frag
+
+
+applyRemoveNode ref frag =
+    Dict.remove ref frag
 
 
 
