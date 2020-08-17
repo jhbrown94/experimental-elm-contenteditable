@@ -405,6 +405,7 @@ type JsMsg
     = JSMutation MutationRecord
     | NewHtmlNode NewHtmlNodeDescriptor
     | NewTextNode NewTextNodeDescriptor
+    | RemoveNode NodeRef
 
 
 decodeJsMsg =
@@ -421,6 +422,9 @@ decodeJsMsg =
 
                         "NewTextNode" ->
                             Decode.map NewTextNode decodeNewTextNode
+
+                        "RemoveNode" ->
+                            Decode.map RemoveNode decodeRemoveNode
 
                         _ ->
                             Decode.fail ("Unknown message type from Javascript: " ++ type_)
@@ -453,6 +457,10 @@ decodeNewTextNode =
         (Decode.field "text" Decode.string)
 
 
+decodeRemoveNode =
+    Decode.map RemoveNode (Decode.field "ref" decodeNodeRef)
+
+
 type alias JsMsgList =
     List JsMsg
 
@@ -478,11 +486,25 @@ applyJsMessage msg frag =
 
 
 applyNewHtmlNode html frag =
-    Dict.insert html.ref { ref = html.ref, previousSibling = Nothing, nextSibling = Nothing, parentNode = Nothing, content = HtmlNode { kind = html.kind, attributes = html.attributes, firstChild = Nothing } } frag
+    Dict.insert html.ref
+        { ref = html.ref
+        , previousSibling = Nothing
+        , nextSibling = Nothing
+        , parentNode = Nothing
+        , content = HtmlNode { kind = html.kind, attributes = html.attributes, firstChild = Nothing }
+        }
+        frag
 
 
 applyNewTextNode text_ frag =
-    Dict.insert text_.ref { ref = text_.ref, previousSibling = Nothing, nextSibling = Nothing, parentNode = Nothing, content = Text text_.text } frag
+    Dict.insert text_.ref
+        { ref = text_.ref
+        , previousSibling = Nothing
+        , nextSibling = Nothing
+        , parentNode = Nothing
+        , content = Text text_.text
+        }
+        frag
 
 
 

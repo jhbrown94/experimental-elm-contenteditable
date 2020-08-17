@@ -48,6 +48,7 @@
     function handleMutation(mutations, observer) {
         console.log('Sending update');
         var messages = []
+        var removedNodeRefs = new Set();
         console.log('start loop');
         for (var mutation of mutations) {
             ensureRef(mutation.target, messages);
@@ -67,10 +68,15 @@
                     mutationJson.previousSibling = mutation.previousSibling ? mutation.previousSibling.elmCERef : null;
                     ensureRef(mutation.nextSibling, messages);
                     mutationJson.nextSibling = mutation.nextSibling ? mutation.nextSibling.elmCERef : null;
-                    Array.prototype.forEach.call(mutation.removedNodes, node => ensureRef(node, messages));
+                    
+                    // Shouldn't need to add refs to nodes being removed -- they should already have them.
+                    // Array.prototype.forEach.call(mutation.removedNodes, node => ensureRef(node, messages));
+                    Array.prototype.forEach.call(mutation.removedNodes, node => removedNodeRefs.add(node.elmCERef))
                     mutationJson.removedNodes = Array.prototype.map.call(mutation.removedNodes, node => node.elmCERef);
+
                     Array.prototype.forEach.call(mutation.addedNodes, node => ensureRef(node, messages));
                     mutationJson.addedNodes = Array.prototype.map.call(mutation.addedNodes, node => node.elmCERef);
+                    Array.prototype.forEach.call(mutation.addedNodes, node => removedNodeRefs.delete(node.elmCERef));
                     messages.push(messageJson);
                     break;
                 default: 
@@ -78,7 +84,9 @@
             }
         }
         console.log('end loop', messages);
-
+        for (removedNodeRef of removedNodeRefs) {
+            messages.push({'type': 'RemoveNode', 'ref': removedNodeRef});
+        }
         app.ports.receiveMessage.send(messages);
     }
 
