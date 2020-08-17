@@ -111,6 +111,19 @@ lastChild html domFragment =
     Maybe.map (\n -> getNode n domFragment |> find) html.firstChild
 
 
+children html graph =
+    let
+        gather ref kids =
+            case ref of
+                Nothing ->
+                    kids
+
+                Just r ->
+                    gather (getNode r graph |> .nextSibling) (r :: kids)
+    in
+    List.reverse (gather html.firstChild [])
+
+
 newDomFragment : Content -> ( DomFragment, NodeRef )
 newDomFragment content =
     ( addNode rootNodeRef content Dict.empty
@@ -531,6 +544,133 @@ logError message logValue returnValue =
 
 
 
+-- Tree DOM
+
+
+type TreeNode
+    = HtmlTree String Attributes TreeNodeList
+    | TextTree String
+
+
+type alias TreeNodeList =
+    List TreeNode
+
+
+
+--node =
+--    HtmlTree
+--div =
+--    node "div"
+--text =
+--    TextTree
+--span =
+--    node "span"
+
+
+type ContentEditable
+    = ContentEditable TreeNode DomFragment
+
+
+type Change
+    = AppendNodes NodeRef (List TreeNode)
+    | RemoveNodes NodeRef (List NodeRef)
+    | ChangeText NodeRef String
+    | ReplaceNode TreeNode NodeRef
+    | ReplaceAttributes Attributes NodeRef
+
+
+diffNodeLists : TreeNodeList -> NodeRef -> List NodeRef -> DomFragment -> List Change -> List Change
+diffNodeLists treeNodes graphParentRef graphRefs graph changes =
+    let
+        diffLists treeList graphList changes_ =
+            case ( treeList, graphList ) of
+                ( [], [] ) ->
+                    changes_
+
+                ( nodes, [] ) ->
+                    appendNodesChange graphParentRef nodes changes_
+
+                ( [], nodes ) ->
+                    removeNodesChange graphParentRef nodes changes_
+
+                ( treeNode :: treeRest, graphNodeRef :: graphRest ) ->
+                    diffLists treeRest graphRest (diffNodes treeNode graphNodeRef graph changes_)
+    in
+    List.reverse (diffLists treeNodes graphRefs changes)
+
+
+appendNodesChange graphParentRef treeNodes changes =
+    AppendNodes graphParentRef treeNodes :: changes
+
+
+removeNodesChange graphParentRef graphNodes changes =
+    RemoveNodes graphParentRef graphNodes :: changes
+
+
+diffNodes treeNode graphNodeRef graph changes =
+    let
+        graphNode =
+            getNode graphNodeRef graph
+    in
+    case ( treeNode, graphNode.content ) of
+        ( TextTree new, Text old ) ->
+            if new /= old then
+                ChangeText graphNodeRef new :: changes
+
+            else
+                changes
+
+        ( HtmlTree kind attributes newChildren, HtmlNode old ) ->
+            if kind /= old.kind then
+                ReplaceNode treeNode graphNodeRef :: changes
+
+            else
+                let
+                    changes_ =
+                        if attributes /= old.attributes then
+                            ReplaceAttributes attributes graphNodeRef :: changes
+
+                        else
+                            changes
+                in
+                diffNodeLists newChildren graphNodeRef (children old graph) graph changes_
+
+        ( old, new ) ->
+            ReplaceNode treeNode graphNodeRef :: changes
+
+
+graphToTree graph =
+    let
+        handleNode graphRef =
+            let
+                node =
+                    getNode graphRef graph
+            in
+            case node.content of
+                Text data ->
+                    TextTree data
+
+                HtmlNode html ->
+                    HtmlTree html.kind html.attributes (List.map handleNode (children html graph))
+    in
+    handleNode 0
+
+
+filterTree tree =
+    case tree of
+        TextTree value ->
+            tree
+
+        HtmlTree kind attributes kids ->
+            case kind of
+                "b" ->
+                    HtmlTree "span" attributes (List.map filterTree kids)
+
+                _ ->
+                    HtmlTree kind attributes (List.map filterTree kids)
+
+
+
 -- Harness
 
 
@@ -570,6 +710,15 @@ update msg model =
                     let
                         frag =
                             List.foldl applyJsMessage model.frag msgList
+
+                        tree =
+                            graphToTree frag
+
+                        filteredTree =
+                            filterTree tree
+
+                        _ =
+                            Debug.log "Here's the diff with self " (diffNodes filteredTree 0 frag [])
                     in
                     ( { model | frag = frag }, Cmd.none )
 

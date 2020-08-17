@@ -27,6 +27,7 @@
     function ensureRef(node, messages) {
         if (node && node.elmCERef === undefined) {
             node.elmCERef = nodeRef++;
+            console.log("Assigned ID: ", node.elmCERef);
 
             if (node instanceof Text) {
                 messages.push({'type': 'NewTextNode', 'data': {'ref': node.elmCERef, 'text': node.data}});
@@ -38,6 +39,7 @@
                     Array.prototype.forEach.call(node.childNodes, child => ensureRef(child, messages));
                     messages.push({'type': 'MutationRecord', 'data' : {'target': node.elmCERef, 'mutation': {'type': 'childList', 'nextSibling': null, 'previousSibling': null, 'removedNodes': [], 
                         'addedNodes': Array.prototype.map.call(node.childNodes, node => node.elmCERef)}}});
+
                 }
             }
         }
@@ -56,6 +58,7 @@
             'data': {'target': mutation.target.elmCERef, 'mutation': {'type': mutation.type}}};
             var mutationJson = messageJson.data.mutation;
 
+            // console.log(mutation);
             switch (mutation.type) {
                 case 'attributes': 
                     break;
@@ -69,14 +72,18 @@
                     ensureRef(mutation.nextSibling, messages);
                     mutationJson.nextSibling = mutation.nextSibling ? mutation.nextSibling.elmCERef : null;
                     
-                    // Shouldn't need to add refs to nodes being removed -- they should already have them.
-                    // Array.prototype.forEach.call(mutation.removedNodes, node => ensureRef(node, messages));
-                    Array.prototype.forEach.call(mutation.removedNodes, node => removedNodeRefs.add(node.elmCERef))
-                    mutationJson.removedNodes = Array.prototype.map.call(mutation.removedNodes, node => node.elmCERef);
+                    // It is possible for a node to get initially added as the child of another new node, so it never gets its own presence in addedNodes, 
+                    // and then to be removed, all before the pile of mutations makes it here.  So we just filter out undefined refs in the removedNodes --
+                    // Elm never saw them.
+                    Array.prototype.forEach.call(mutation.removedNodes, node => {if (node.elmCERef !== undefined) {removedNodeRefs.add(node.elmCERef)}});
+                    mutationJson.removedNodes = Array.prototype.map.call(mutation.removedNodes, node => node.elmCERef).filter(ref => ref !== undefined);
+
+                    // Array.prototype.forEach.call(mutationJson.removedNodes, ref => console.log("removed ", ref));
 
                     Array.prototype.forEach.call(mutation.addedNodes, node => ensureRef(node, messages));
                     mutationJson.addedNodes = Array.prototype.map.call(mutation.addedNodes, node => node.elmCERef);
                     Array.prototype.forEach.call(mutation.addedNodes, node => removedNodeRefs.delete(node.elmCERef));
+                    // Array.prototype.forEach.call(mutation.addedNodes, node => console.log("added ", node.elmCERef));
                     messages.push(messageJson);
                     break;
                 default: 
