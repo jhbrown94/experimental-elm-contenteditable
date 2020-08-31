@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>CEDom</title>
+  <script src="custom-editable.js"
   <script src="main.js"></script>
 </head>
 
@@ -98,12 +99,12 @@
     }
 
 
-    // app.ports.setContent.subscribe(function(data) {
-    //     console.log("Got data", data);
-    //     var node = document.getElementById(data[0]);
-    //     console.log("Node is ", node)
-    //     node.innerHTML = data[1]
-    // });
+    app.ports.sendMessage.subscribe(function(data) {
+        console.log("Got changes", data);
+        // var node = document.getElementById(data[0]);
+        // console.log("Node is ", node)
+        // node.innerHTML = data[1]
+    });
 
 
 

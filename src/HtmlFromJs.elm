@@ -5,6 +5,7 @@ import Dict
 import Html as H
 import Html.Attributes as HA
 import Json.Decode as Decode
+import Json.Encode as Encode
 import Maybe.Extra as MaybeX
 
 
@@ -91,6 +92,10 @@ type alias Attributes =
 
 decodeAttributes =
     Decode.dict Decode.string
+
+
+encodeAttributes attrs =
+    Encode.dict (\k -> k) Encode.string attrs
 
 
 firstChild html =
@@ -268,6 +273,10 @@ decodeChildListMutation =
 
 decodeNodeRef =
     Decode.int
+
+
+encodeNodeRef ref =
+    Encode.int ref
 
 
 decodeMaybeNodeRef =
@@ -485,6 +494,9 @@ decodeJsMsgList =
 port receiveMessage : (Decode.Value -> msg) -> Sub msg
 
 
+port sendMessage : Encode.Value -> Cmd msg
+
+
 applyJsMessage : JsMsg -> DomFragment -> DomFragment
 applyJsMessage msg frag =
     case msg of
@@ -556,6 +568,24 @@ type alias TreeNodeList =
     List TreeNode
 
 
+encodeTreeNode tree =
+    case tree of
+        TextTree value ->
+            Encode.object [ ( "type", Encode.string "Text" ), ( "data", Encode.string value ) ]
+
+        HtmlTree kind attributes kids ->
+            Encode.object
+                [ ( "type", Encode.string "Html" )
+                , ( "data"
+                  , Encode.object
+                        [ ( "kind", Encode.string kind )
+                        , ( "attributes", encodeAttributes attributes )
+                        , ( "children", Encode.list encodeTreeNode kids )
+                        ]
+                  )
+                ]
+
+
 
 --node =
 --    HtmlTree
@@ -573,10 +603,32 @@ type ContentEditable
 
 type Change
     = AppendNodes NodeRef (List TreeNode)
-    | RemoveNodes NodeRef (List NodeRef)
+    | RemoveNodes (List NodeRef)
     | ChangeText NodeRef String
     | ReplaceNode TreeNode NodeRef
     | ReplaceAttributes Attributes NodeRef
+
+
+encodeChange change =
+    case change of
+        AppendNodes parentRef childNodes ->
+            Encode.object [ ( "type", Encode.string "AppendNodes" ), ( "data", Encode.object [ ( "parentRef", encodeNodeRef parentRef ), ( "childNodes", Encode.list encodeTreeNode childNodes ) ] ) ]
+
+        RemoveNodes childRefs ->
+            Encode.object [ ( "type", Encode.string "RemoveNodes" ), ( "data", Encode.object [ ( "childRefs", Encode.list encodeNodeRef childRefs ) ] ) ]
+
+        ChangeText nodeRef value ->
+            Encode.object [ ( "type", Encode.string "ChangeText" ), ( "data", Encode.object [ ( "text", Encode.string value ) ] ) ]
+
+        ReplaceNode newTreeNode nodeRef ->
+            Encode.object [ ( "type", Encode.string "ReplaceNode" ), ( "data", Encode.object [ ( "oldRef", encodeNodeRef nodeRef ), ( "newNode", encodeTreeNode newTreeNode ) ] ) ]
+
+        ReplaceAttributes attributes nodeRef ->
+            Encode.object [ ( "type", Encode.string "ReplaceAttributes" ), ( "data", Encode.object [ ( "ref", encodeNodeRef nodeRef ), ( "attributes", encodeAttributes attributes ) ] ) ]
+
+
+encodeChangeList changelist =
+    Encode.list encodeChange changelist
 
 
 diffNodeLists : TreeNodeList -> NodeRef -> List NodeRef -> DomFragment -> List Change -> List Change
@@ -591,20 +643,20 @@ diffNodeLists treeNodes graphParentRef graphRefs graph changes =
                     appendNodesChange graphParentRef nodes changes_
 
                 ( [], nodes ) ->
-                    removeNodesChange graphParentRef nodes changes_
+                    removeNodesChange nodes changes_
 
                 ( treeNode :: treeRest, graphNodeRef :: graphRest ) ->
                     diffLists treeRest graphRest (diffNodes treeNode graphNodeRef graph changes_)
     in
-    List.reverse (diffLists treeNodes graphRefs changes)
+    diffLists treeNodes graphRefs changes
 
 
 appendNodesChange graphParentRef treeNodes changes =
     AppendNodes graphParentRef treeNodes :: changes
 
 
-removeNodesChange graphParentRef graphNodes changes =
-    RemoveNodes graphParentRef graphNodes :: changes
+removeNodesChange graphNodes changes =
+    RemoveNodes graphNodes :: changes
 
 
 diffNodes treeNode graphNodeRef graph changes =
@@ -717,10 +769,16 @@ update msg model =
                         filteredTree =
                             filterTree tree
 
-                        _ =
+                        changes =
                             Debug.log "Here's the diff with self " (diffNodes filteredTree 0 frag [])
                     in
-                    ( { model | frag = frag }, Cmd.none )
+                    ( { model | frag = frag }
+                    , if changes /= [] then
+                        sendMessage (encodeChangeList changes)
+
+                      else
+                        Cmd.none
+                    )
 
                 Err err ->
                     logError "Failed to decode message from JS: " (Decode.errorToString err) ( model, Cmd.none )
