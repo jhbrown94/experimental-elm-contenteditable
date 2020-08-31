@@ -226,7 +226,7 @@ demoFilter htmlList =
         (\n ->
             case n of
                 Text value ->
-                    Text (String.replace "a" "b" value)
+                    Text (String.replace "teh " "the " value)
 
                 Element k a c ->
                     Element k a (demoFilter c)

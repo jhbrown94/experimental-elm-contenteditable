@@ -3,12 +3,10 @@ class CustomEditable extends HTMLElement {
   static get observedAttributes() { return ['dirty']; }
 
   nodePath(offset, node) {
-      console.log("start path", offset, node);
       if (node) {
         let focusPath = [offset];
 
         while (node != this.shadowRoot && node.parentNode ) {
-            console.log("Pathing ", node);
             const index = Array.from(node.parentNode.childNodes).indexOf(node);
             focusPath.unshift(index);
             node = node.parentNode;
@@ -41,14 +39,13 @@ class CustomEditable extends HTMLElement {
       }
 
       const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: {html: div.childNodes, selection: elmSelection}});
-      console.log("Emitting edited", event);
       div.dispatchEvent(event);      
     }
 
     var obs = new MutationObserver(function(mutations, observer) { emitEdited();});
     obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
-    shadow.addEventListener('selectionchange', function (e) { emitEdited();});
+    document.addEventListener('selectionchange', function () {emitEdited();});
   }
 
   connectedCallback() {
@@ -56,8 +53,6 @@ class CustomEditable extends HTMLElement {
   }
 
   slotChangeCallback(e) {
-    console.log("Slot changed", name);
-    console.log("Self", this);
     const self = this;
       let div = self.shadowRoot.querySelectorAll('div')[0];
       let slots = self.shadowRoot.querySelectorAll('slot');
@@ -72,7 +67,6 @@ class CustomEditable extends HTMLElement {
 
 
     const elmSelection = JSON.parse(self.getAttribute("selection"));
-    console.log(elmSelection);
 
     if (!elmSelection) {return;}
 
@@ -85,7 +79,6 @@ class CustomEditable extends HTMLElement {
 
       let focusNode = self.shadowRoot;
       while (focusPath.length > 1) {
-        console.log("Focus node", focusNode);
         focusNode = focusNode.childNodes[focusPath.shift()];
       }
       range.setStart(focusNode, focusPath.shift());
