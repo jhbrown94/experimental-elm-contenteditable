@@ -38,10 +38,10 @@ type alias HtmlList =
     List Html
 
 
-type alias Selection =
-    { start : HtmlPosition
-    , end : HtmlPosition
-    }
+type Selection
+    = NoSelection
+    | Caret HtmlPosition
+    | Range HtmlPosition HtmlPosition
 
 
 type alias HtmlPosition =
@@ -64,7 +64,10 @@ nodeToHtml html =
 view state =
     Html.node "custom-editable"
         [ Html.Events.on "edited"
-            (Decode.map Edited (loggingDecoder (Decode.field "detail" decodeHtmlList)))
+            (Decode.map2 Edited
+                (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
+                (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeSelection)))
+            )
         , Html.Attributes.attribute "dirty"
             (if state.dirty then
                 "true"
@@ -72,6 +75,7 @@ view state =
              else
                 "false"
             )
+        , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
         ]
         (listToHtml state.html)
 
@@ -90,6 +94,45 @@ loggingDecoder realDecoder =
                             |> Debug.log "decoding error"
                             |> Decode.fail
             )
+
+
+decodeSelection =
+    Decode.field "type" Decode.string
+        |> Decode.andThen
+            (\type_ ->
+                case type_ of
+                    "None" ->
+                        Decode.succeed NoSelection
+
+                    "Caret" ->
+                        Decode.map Caret (Decode.field "focus" decodeHtmlPosition)
+
+                    "Range" ->
+                        Decode.map2 Range (Decode.field "anchor" decodeHtmlPosition) (Decode.field "focus" decodeHtmlPosition)
+
+                    _ ->
+                        Decode.fail "Failed to decode selection"
+            )
+
+
+encodeSelection selection =
+    case selection of
+        NoSelection ->
+            Encode.object [ ( "type", Encode.string "None" ) ]
+
+        Caret focus ->
+            Encode.object [ ( "type", Encode.string "Caret" ), ( "focus", encodeHtmlPosition focus ), ( "anchor", encodeHtmlPosition focus ) ]
+
+        Range anchor focus ->
+            Encode.object [ ( "type", Encode.string "Range" ), ( "focus", encodeHtmlPosition focus ), ( "anchor", encodeHtmlPosition anchor ) ]
+
+
+decodeHtmlPosition =
+    Decode.list Decode.int
+
+
+encodeHtmlPosition pos =
+    Encode.list Encode.int pos
 
 
 
@@ -175,7 +218,7 @@ decodeHtml =
 
 
 type Msg
-    = Edited HtmlList
+    = Edited HtmlList Selection
 
 
 demoFilter htmlList =
@@ -193,7 +236,7 @@ demoFilter htmlList =
 
 update msg state =
     case msg of
-        Edited htmlList ->
+        Edited htmlList selection ->
             let
                 newHtml =
                     htmlList |> demoFilter
@@ -208,12 +251,12 @@ update msg state =
                     else
                         dirty
             in
-            { state | html = newHtml, dirty = dirty }
+            { state | html = newHtml, selection = selection, dirty = dirty }
 
 
 main =
     Browser.sandbox
         { view = view
         , update = update
-        , init = State [ Element "i" [] [ Text "hello world from Elm" ] ] (Selection [] []) True
+        , init = State [ Element "i" [] [ Text "hello world from Elm" ] ] NoSelection True
         }
