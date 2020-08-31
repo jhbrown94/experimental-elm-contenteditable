@@ -1,42 +1,53 @@
 class CustomEditable extends HTMLElement {
-  // I'm not clear why Elm does the attributes late, but it does, so if we don't
-  // monitor them as they change we can render data from some other custom call.  It's weird.
-  static get observedAttributes() { return ['data-text']; }
+
+  static get observedAttributes() { return ['dirty']; }
 
   constructor() {
     super();
-    var shadow = this.attachShadow({mode: 'open'});
-    // const style = document.createElement('style');
+    const self = this;
+    var shadow = self.attachShadow({mode: 'open'});
+    let template = document.getElementById('editable-template');
+    let templateContent = template.content;
+    shadow.appendChild(templateContent.cloneNode(true));
 
-    //     style.textContent = `
-    // a {
-    //   color: #127FBF;
-    // }
+    let slots = self.shadowRoot.querySelectorAll('slot');
+    slots[0].addEventListener('slotchange', function (e) {self.slotChangeCallback(e);});
+    let div = self.shadowRoot.querySelectorAll('div')[0];
 
-    // * {
-    //   white-space: normal !important;
-    //   line-height: 1.5;
-    // }
-    //       `;
-
-    //         shadow.appendChild(style);
-
-    const ce = document.createElement('div');
-    ce.setAttribute('contenteditable', 'true');
-    shadow.appendChild(ce);
+    var obs = new MutationObserver(function(mutations, observer) {
+      const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: div.childNodes });
+      div.dispatchEvent(event);
+    });
+    obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
   }
 
   connectedCallback() {
     this.attributeChangedCallback()
   }
 
-  attributeChangedCallback(name, oldValue, newValue) {
-    const shadow = this.shadowRoot;
-    const ce = shadow.querySelector('div');
-    var text = this.getAttribute('data-text');
+  slotChangeCallback(e) {
+    console.log("Slot changed", name);
+    const self = this;
+      let div = self.shadowRoot.querySelectorAll('div')[0];
+      let slots = self.shadowRoot.querySelectorAll('slot');
 
-    ce.innerHTML = text;
+      while (div.childNodes.length > 0 ) {
+        div.removeChild(div.childNodes[0]);
+      }
+
+      for (const node of slots[0].assignedNodes()) {
+        div.appendChild(node.cloneNode(true));
+      }
+
   }
+  
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name == "dirty") {
+     this.slotChangeCallback();
+   }
+ }
+
 }
 
 // Define the new element
