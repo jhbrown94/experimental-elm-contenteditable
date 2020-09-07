@@ -1,18 +1,20 @@
+const shadow = require('shadow-selection-polyfill');
+
 class CustomEditable extends HTMLElement {
 
   static get observedAttributes() { return ['dirty']; }
 
   nodePath(offset, node) {
       if (node) {
-        let focusPath = [offset];
+        let nodePath = [offset];
 
         while (node != this.shadowRoot && node.parentNode ) {
             const index = Array.from(node.parentNode.childNodes).indexOf(node);
-            focusPath.unshift(index);
+            nodePath.unshift(index);
             node = node.parentNode;
         }
 
-        return focusPath;
+        return nodePath;
       }
       return null;
   }
@@ -20,32 +22,33 @@ class CustomEditable extends HTMLElement {
   constructor() {
     super();
     const self = this;
-    var shadow = self.attachShadow({mode: 'open'});
+    var shadowRoot = self.attachShadow({mode: 'open'});
     let template = document.getElementById('editable-template');
     let templateContent = template.content;
-    shadow.appendChild(templateContent.cloneNode(true));
+    shadowRoot.appendChild(templateContent.cloneNode(true));
 
-    let slots = self.shadowRoot.querySelectorAll('slot');
+    let slots = shadowRoot.querySelectorAll('slot');
     slots[0].addEventListener('slotchange', function (e) {self.slotChangeCallback(e);});
-    let div = self.shadowRoot.querySelectorAll('div')[0];
+    let div = shadowRoot.querySelectorAll('div')[0];
 
     function emitEdited() {
-      const selection = shadow.getSelection();
-      let elmSelection = {type: selection.type};
+      const range = shadow.getRange(shadowRoot);
+      console.log(range);
+      let elmRange = null;
 
-      if (selection.type != "None") {
-        elmSelection.focus = self.nodePath(selection.focusOffset, selection.focusNode);
-        elmSelection.anchor = self.nodePath(selection.anchorOffset, selection.anchorNode);
+      if (range) {
+        elmRange = {end: self.nodePath(range.endOffset, range.endContainer), 
+          start: self.nodePath(range.startOffset, range.startContainer)};
       }
 
-      const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: {html: div.childNodes, selection: elmSelection}});
+      const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: {html: div.childNodes, selection: elmRange}});
       div.dispatchEvent(event);      
     }
 
     var obs = new MutationObserver(function(mutations, observer) { emitEdited();});
     obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
-    document.addEventListener('selectionchange', function () {emitEdited();});
+    document.addEventListener(shadow.eventName, function () {emitEdited();});
   }
 
   connectedCallback() {
@@ -66,28 +69,28 @@ class CustomEditable extends HTMLElement {
       }
 
 
-    const elmSelection = JSON.parse(self.getAttribute("selection"));
+    const elmRange = JSON.parse(self.getAttribute("selection"));
 
-    if (!elmSelection) {return;}
+    if (!elmRange) {return;}
 
     let selection = document.getSelection();
     selection.removeAllRanges();
-    if (elmSelection.type !== "None") {
-      const focusPath = elmSelection.focus;
-      const anchorPath = elmSelection.anchor;
+    if (elmRange.type !== "None") {
+      const startPath = elmRange.start;
+      const endPath = elmRange.end;
       let range = document.createRange();
 
-      let focusNode = self.shadowRoot;
-      while (focusPath.length > 1) {
-        focusNode = focusNode.childNodes[focusPath.shift()];
+      let startNode = self.shadowRoot;
+      while (startPath.length > 1) {
+        startNode = startNode.childNodes[startPath.shift()];
       }
-      range.setStart(focusNode, focusPath.shift());
+      range.setStart(startNode, startPath.shift());
 
-      let anchorNode = self.shadowRoot;
-      while (anchorPath.length > 1) {
-        anchorNode = anchorNode.childNodes[anchorPath.shift()];
+      let endNode = self.shadowRoot;
+      while (endPath.length > 1) {
+        endNode = endNode.childNodes[endPath.shift()];
       }
-      range.setEnd(anchorNode, anchorPath.shift());
+      range.setEnd(endNode, endPath.shift());
 
       selection.addRange(range);
     }
