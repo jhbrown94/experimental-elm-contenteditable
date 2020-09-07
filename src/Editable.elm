@@ -38,6 +38,44 @@ type alias HtmlList =
     List Html
 
 
+htmlToString indent html =
+    let
+        prefix =
+            String.repeat indent "    "
+    in
+    case html of
+        Element kind attrs children ->
+            prefix ++ "<" ++ kind ++ attributesToString indent attrs ++ ">\n" ++ htmlListToString (indent + 1) children ++ prefix ++ "</" ++ kind ++ ">\n"
+
+        Text text ->
+            prefix ++ text ++ "\n"
+
+
+htmlListToString : Int -> HtmlList -> String
+htmlListToString indent htmlList =
+    List.foldl (\n a -> a ++ htmlToString indent n) "" htmlList
+
+
+attributeToString attr =
+    attr.name ++ " = \"" ++ attr.value ++ "\""
+
+
+attributesToString indent attrs =
+    let
+        prefix =
+            String.repeat indent "    " ++ "  "
+    in
+    case attrs of
+        [] ->
+            ""
+
+        [ a ] ->
+            " " ++ attributeToString a
+
+        many ->
+            List.map attributeToString many |> List.foldl (\s a -> a ++ "\n" ++ prefix ++ s) ""
+
+
 type Selection
     = NoSelection
     | Caret HtmlPosition
@@ -62,22 +100,29 @@ nodeToHtml html =
 
 
 view state =
-    Html.node "custom-editable"
-        [ Html.Events.on "edited"
-            (Decode.map2 Edited
-                (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
-                (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeSelection)))
-            )
-        , Html.Attributes.attribute "dirty"
-            (if state.dirty then
-                "true"
+    Html.div []
+        [ Html.node "custom-editable"
+            [ Html.Events.on "edited"
+                (Decode.map2 Edited
+                    (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
+                    (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeSelection)))
+                )
+            , Html.Attributes.attribute "dirty"
+                (if state.dirty then
+                    "true"
 
-             else
-                "false"
-            )
-        , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
+                 else
+                    "false"
+                )
+            , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
+            ]
+            (listToHtml state.html)
+        , Html.pre [] [ Html.text <| htmlListToString 0 state.html ]
         ]
-        (listToHtml state.html)
+
+
+
+-- loggingDecoder is from https://thoughtbot.com/blog/debugging-dom-event-handlers-in-elm
 
 
 loggingDecoder realDecoder =
