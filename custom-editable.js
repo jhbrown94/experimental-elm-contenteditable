@@ -1,4 +1,6 @@
-const shadow = require('shadow-selection-polyfill');
+//const shadow = require('shadow-selection-polyfill');
+
+import * as shadow from "./shadow.js";
 
 class CustomEditable extends HTMLElement {
 
@@ -33,7 +35,7 @@ class CustomEditable extends HTMLElement {
 
     function emitEdited() {
       const range = shadow.getRange(shadowRoot);
-      console.log(range);
+      //console.log("getRange called from customEditable:", range);
       let elmRange = null;
 
       if (range) {
