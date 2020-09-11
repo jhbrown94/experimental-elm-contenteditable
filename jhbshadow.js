@@ -1,27 +1,65 @@
-// This is an attempt at determining the complete selection, down to the individual HTML node, inside a shadowRoot on Safari.
-// It is heavily informed by staring at https://github.com/GoogleChromeLabs/shadow-selection-polyfill
-// which is short on comments but long on useful techniques.  Since I have the memory of a sieve,
-// I will attempt to include more comments in here.
+// This is an attempt at determining the complete selection, down to the
+// individual HTML node, down to the individual characters, with
+// directionality, inside a shadowRoot on Safari. It is heavily informed by
+// https://github.com/GoogleChromeLabs/shadow-selection-polyfill which is
+// short on comments but long on useful techniques.  Since I have the memory
+// of a sieve, I will attempt to include more comments in here.
 
 // To begin with, why are we here?  
 
-// In Safari, there is no getSelection method on shadowRoot.  If the selection is inside
-// a shadowRoot, and you get a Selection from document.getSelection, selection.getRangeAt(0) returns a range which is a single point right
-// before the shadow dom.  This is enforced at the C++ level.  So we need to derive an actual selection range ourselves. 
+// In Safari, there is no getSelection method on shadowRoot.  If the selection
+// is inside a shadowRoot, and you get a Selection from document.getSelection,
+// selection.getRangeAt(0) returns a range which is a single point right
+// before the shadow dom.  This is enforced at the C++ level.  So we need to
+// derive an actual selection range ourselves. 
 
-// The good news is that Selection.containsNode still works -- you get real answers if you pass it nodes from inside the shadow DOM.  So you can interrogate 
-// it piecemeal to determine the start and end nodes of the real selection range.
+// The good news is that most other Seletion methods still work.  In
+// particular, to figure out which nodes you are in, Selection.containsNode
+// still works -- you get real answers if you pass it nodes from inside the
+// shadow DOM.  So you can interrogate  it piecemeal to determine the start
+// and end nodes of the real selection range.
 
-// TODO: text / etc.
+// Similarly, Selection.collapse, Selection.extend, and Selection.toString all
+// work with nodes from the Shadow DOM.  So by playing various games with text
+// nodes, you can ultimately derive the offsets within text nodes as well.
 
+ 
+document.addEventListener('selectionchange', selectionChangeHandler);
+
+// Don't propagate selectionchanged events when true
+let squelchEvent = false;
+
+function selectionChangeHandler(e) {
+
+    // Early exit if we've recently notified about this, or have recently
+    // gotten the range with getSelectionRange
+    if (squelchEvent) {
+        return;
+    }
+
+    // Squash duplicates
+    squelchEvent = true;
+
+    // Dispatch our custom event synchronously
+    document.dispatchEvent(new CustomEvent('-jhb-selectionchange'));
+
+    // Safari seems to run all selection event handlers before user-queued
+    // tasks.  So this will run after queued selectionchange events.  However,
+    // it's hacky -- it's at least theoretically possible that some other
+    // event handler could modify the selection (including by modifying the
+    // DOM) before we get around to this.
+    window.setTimeout(() => {squelchEvent = false;}, 0);
+};
 
 
 export function getSelectionRange(root) {
     const selection = document.getSelection();
     if (!selection.containsNode(root, true)) {
+        console.log("getSelectionRange early exit");
         return null;
     }
 
+    squelchEvent = true;
 
     function getLeftNode(node) {
         let children = Array.from(node.childNodes);
@@ -49,11 +87,14 @@ export function getSelectionRange(root) {
                 const result = getLeftNode(child);
                 if (result) { return result; }
                
-                // This child was partially contained, but none of its children were contained at all.
-                // The caret is probably to the right, but there are special cases for the zeroth element.
+                // This child was partially contained, but none of its
+                // children were contained at all. The caret is probably to
+                // the right, but there are special cases for the zeroth
+                // element.
                 if (index == 0)  {
                     if (children.length == 1) {
                         // this is the only node.  The caret is to the left.
+                        // NOTE: there is probably a special case that can be created with splitText -- we'll flail on that here.
                         return [node, 0];                        
                     }
                     if (children.length > 1 && (!selection.containsNode(children[1], true))) {
@@ -110,14 +151,11 @@ export function getSelectionRange(root) {
     let [leftNode, leftOffset] = getLeftNode(root);
     let [rightNode, rightOffset] = getRightNode(root);
     let direction = "None";
-
-    // Do we still need to compute the text offsets?
+        
     if ((leftOffset === null) && (rightOffset === null)) {
-        console.log("Double null");
 
         if (leftNode !== rightNode) {
             // Working across multiple nodes
-            console.log("Different left and right nodes");
 
             const initialLength = selection.toString().length;
 
@@ -142,7 +180,6 @@ export function getSelectionRange(root) {
             }
         } else {
             // Selection is within one text node.
-            console.log("Selection is in one text node.");
             let initialLength = selection.toString().length;
 
             // First special case: a caret (zero-length selection)
@@ -160,7 +197,7 @@ export function getSelectionRange(root) {
                     // With apologies to all MutationObservers, we find the selection by mutating things until the
                     // selection itself changes.  Basically, we split the last character off the node over and over.
                     leftNode.splitText(dataLength - 1);
-                    console.log("Split selection", selection.toString());
+                    
 
                     // If the removed character was outside the selection, selection length doesn't change
                     if (selection.toString().length === initialLength) {
@@ -196,7 +233,7 @@ export function getSelectionRange(root) {
             }
         }
     } else if (leftOffset === null) {
-        console.log("Left null");
+        
 
         // Right is solid.  It should be a non-text node, i.e. not this one.
         const initialLength = selection.toString().length;
@@ -209,7 +246,7 @@ export function getSelectionRange(root) {
             direction = "RightIsFocus";
 
             // We've selected from the offset point to the beginning of the text node.
-            console.log("Right focus selction", selection.toString());
+            
             leftOffset = selection.toString().length;
         } else {
             // The right side was the focus.  We just added an offset's worth of text.
@@ -218,7 +255,7 @@ export function getSelectionRange(root) {
         }
 
     } else if (rightOffset === null) {
-        console.log("Right null");
+        
 
         // Left is solid.  It should be a non-text node, i.e. not this one.
         const initialLength = selection.toString().length;
@@ -231,15 +268,32 @@ export function getSelectionRange(root) {
             direction = "LeftIsFocus";
 
             // We've selected from the offset point to the beginning of the text node.
-            console.log("Left focus selction", selection.toString());
+            
             rightOffset = selection.toString().length;
         } else {
             // The right side was the focus.  We just sliced out an offset's worth of text.
             direction = "RightIsFocus";
             rightOffset = initialLength - selection.toString().length;
         }
+    } else {
+        // we just need direction
+        if (leftNode !== rightNode || leftOffset !== rightOffset) {
+            selection.extend(rightNode, rightOffset);
+            let [newLeftNode, newLeftOffset] = getLeftNode(root);
+
+            if (newLeftNode === leftNode && newLeftOffset === leftOffset) {
+                // if left didn't move, then it was the anchor
+                direction = "RightIsFocus";
+            } else {
+                direction = "LeftIsFocus";
+            }
+        } else {
+            // caret
+            direction = "None";
+        }
     }
-    console.log("Direction", direction);
+    
+    
 
     let result;
     if (direction === "LeftIsFocus") {
@@ -257,10 +311,10 @@ export function getSelectionRange(root) {
             focusOffset: rightOffset
         };
     }
-    console.log("Result", result);
+    
     selection.collapse(result.anchorNode, result.anchorOffset);
     selection.extend(result.focusNode, result.focusOffset);
+
     return result;
 }
 
-console.log("jhb loaded")
