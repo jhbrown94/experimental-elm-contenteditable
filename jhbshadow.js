@@ -151,7 +151,7 @@ export function getSelectionRange(root) {
 
                 leftOffset = selection.toString().length;
                 rightOffset = leftOffset;
-            } else if (initialLength > 1) {
+            } else {
                 let initialNext = leftNode.nextSibling;
                 let initialData = leftNode.data;
                 let dataLength = initialData.length;
@@ -171,7 +171,11 @@ export function getSelectionRange(root) {
                     rightOffset = dataLength;
                     leftOffset = rightOffset - initialLength;
 
-                    // Because we said initialLength > 1, we know there's still one character in the selection. 
+                    // Let's add one character back.  In Safari, the selection's anchor or focus will expand
+                    // to include that.
+                    leftNode.appendData("*");
+
+                    // Now we know there's at least one character in the selection. 
                     // So let's send Focus to leftOffset.  If it was already there, length doesn't change.
                     // If it wasn't already there, length goes to zero.
                     selection.extend(leftNode, leftOffset);
@@ -206,11 +210,11 @@ export function getSelectionRange(root) {
 
             // We've selected from the offset point to the beginning of the text node.
             console.log("Right focus selction", selection.toString());
-            rightOffset = selection.toString().length;
+            leftOffset = selection.toString().length;
         } else {
             // The right side was the focus.  We just added an offset's worth of text.
             direction = "LeftIsFocus";
-            rightOffset = selection.toString().length - initialLength;
+            leftOffset = selection.toString().length - initialLength;
         }
 
     } else if (rightOffset === null) {
