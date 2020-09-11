@@ -8,17 +8,17 @@ window.setInterval(() => {
     // const br = document.createElement("br");
     // log.prepend(br);
 
-    // const content = document.createTextNode(range);  
+    // const content = document.createTextNode(computed);  
     // log.prepend(content || "null");
-    const sysrange = document.getSelection().getRangeAt(0);
-    console.log("Current system range:", sysrange);
+    const selection = document.getSelection();
+    const selectionCache = {anchorNode: selection.anchorNode, anchorOffset: selection.anchorOffset, focusNode: selection.focusNode, focusOffset: selection.focusOffset};
+    const computed = jhb.getSelectionRange(div);
 
-    const range = jhb.getSelectionRange(div);
-    console.log("Current computed range: ", range);
+    console.log("System selection", selectionCache);
+    console.log("Current computed selection: ", computed);
+    if (selectionCache.anchorNode !== computed.anchorNode) { console.log("ANCHOR NODES DIFFER (system, computed)", selectionCache.anchorNode, computed.anchorNode);}
+    if (selectionCache.anchorOffset !== computed.anchorOffset) { console.log("ANCHOR OFFSETS DIFFER (system, computed)", selectionCache.anchorOffset, computed.anchorOffset);}
+    if (selectionCache.focusNode !== computed.focusNode) { console.log("FOCUS NODES DIFFER (system, computed)", selectionCache.focusNode, computed.focusNode);}
+    if (selectionCache.focusOffset !== computed.focusOffset) { console.log("FOCUS OFFSETS DIFFER (system, computed)", selectionCache.focusOffset, computed.focusOffset);}
 
-    if (sysrange.startContainer !== range.startContainer) { console.log("START NODES DIFFER (system, computed)", sysrange.startContainer, range.startContainer);}
-    if (sysrange.startOffset !== range.startOffset) { console.log("START OFFSETS DIFFER (system, computed)", sysrange.startOffset, range.startOffset);}
-    if (sysrange.endContainer !== range.endContainer) { console.log("END NODES DIFFER (system, computed)", sysrange.endContainer, range.endContainer);}
-    if (sysrange.endOffset !== range.endOffset) { console.log("END OFFSETS DIFFER (system, computed)", sysrange.endOffset, range.endOffset);}
-
-}, 1000);
+}, 3000);
