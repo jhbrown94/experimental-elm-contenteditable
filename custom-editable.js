@@ -1,6 +1,6 @@
 //const shadow = require('shadow-selection-polyfill');
 
-import * as shadow from "./shadow.js";
+import * as jhb from "./jhbshadow.js";
 
 class CustomEditable extends HTMLElement {
 
@@ -34,13 +34,14 @@ class CustomEditable extends HTMLElement {
     let div = shadowRoot.querySelectorAll('div')[0];
 
     function emitEdited() {
-      const range = shadow.getRange(shadowRoot);
-      //console.log("getRange called from customEditable:", range);
+      const range = jhb.getSelectionRange(shadowRoot);
+      console.log("getSelectionRange called from customEditable:", range);
       let elmRange = null;
 
+
       if (range) {
-        elmRange = {end: self.nodePath(range.endOffset, range.endContainer), 
-          start: self.nodePath(range.startOffset, range.startContainer)};
+        elmRange = {end: self.nodePath(range.focusOffset, range.focusNode), 
+          start: self.nodePath(range.anchorOffset, range.anchorNode)};
       }
 
       const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: {html: div.childNodes, selection: elmRange}});
@@ -50,7 +51,7 @@ class CustomEditable extends HTMLElement {
     var obs = new MutationObserver(function(mutations, observer) { emitEdited();});
     obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
-    document.addEventListener(shadow.eventName, function () {emitEdited();});
+    document.addEventListener(jhb.eventName, function () {emitEdited();});
   }
 
   connectedCallback() {
@@ -70,32 +71,33 @@ class CustomEditable extends HTMLElement {
         div.appendChild(node.cloneNode(true));
       }
 
-
     const elmRange = JSON.parse(self.getAttribute("selection"));
 
-    if (!elmRange) {return;}
 
-    let selection = document.getSelection();
-    selection.removeAllRanges();
-    if (elmRange.type !== "None") {
+    let range = null;
+
+    if (elmRange) {
       const startPath = elmRange.start;
       const endPath = elmRange.end;
-      let range = document.createRange();
-
       let startNode = self.shadowRoot;
       while (startPath.length > 1) {
         startNode = startNode.childNodes[startPath.shift()];
       }
-      range.setStart(startNode, startPath.shift());
-
+      
       let endNode = self.shadowRoot;
       while (endPath.length > 1) {
         endNode = endNode.childNodes[endPath.shift()];
       }
-      range.setEnd(endNode, endPath.shift());
 
-      selection.addRange(range);
+      range = {
+        anchorNode: startNode,
+        anchorOffset: startPath.shift(),
+        focusNode: endNode,
+        focusOffset: endPath.shift()
+      }
     }
+    console.log("SetSelectionRange", range);
+    jhb.setSelectionRange(self.shadowRoot, range);
   }
   
 

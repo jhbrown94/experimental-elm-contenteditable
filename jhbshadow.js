@@ -1,3 +1,22 @@
+/**
+ * Copyright 2020 Jeremy H. Brown
+ * 
+ * Copyright 2018 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
+
 // This is an attempt at determining the complete selection, down to the
 // individual HTML node, down to the individual characters, with
 // directionality, inside a shadowRoot on Safari. It is heavily informed by
@@ -23,42 +42,89 @@
 // work with nodes from the Shadow DOM.  So by playing various games with text
 // nodes, you can ultimately derive the offsets within text nodes as well.
 
- 
 
-// Don't propagate selectionchanged events when true
+// Taken almost literally from
+// https://github.com/GoogleChromeLabs/shadow-selection-polyfill
+const hasShadowSelection = !!(document.createElement('div').attachShadow({ mode: 'open' }).getSelection);
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) ||
+  /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+// Don't propagate selectionchanged events when true -- we're just letting the ones we generated
+// settle out.  There's a risk of missing user-generated selectionevents, though, due
+// to our inability to precisely bracket selectionchange events we generate -- trying
+// to use setTimeout to bracket isn't guaranteed because Safari seems to handle that
+// on a separate task queue from the selectionchange events, which all go first.
 let squelchEvent = false;
 
-function selectionChangeHandler(e) {
+export function squelchingEvents() {
+    return squelchEvent;
+}
 
+export const eventName = '-jhb-selectionchange';
+
+function selectionChangeHandler(e) {
     // Early exit if we've recently notified about this, or have recently
     // gotten the range with getSelectionRange
     if (squelchEvent) {
         return;
     }
 
-    // Squash duplicates
-    squelchEvent = true;
+    if (isSafari) {
+        // Squash duplicates
+        squelchEvent = true;
+    }
 
     // Dispatch our custom event synchronously
-    document.dispatchEvent(new CustomEvent('-jhb-selectionchange'));
+    document.dispatchEvent(new CustomEvent(eventName));
 
-    // Safari seems to run all selection event handlers before user-queued
-    // tasks.  So this will run after queued selectionchange events.  However,
-    // it's hacky -- it's at least theoretically possible that some other
-    // event handler could modify the selection (including by modifying the
-    // DOM) before we get around to this.
-    window.setTimeout(() => {
-        squelchEvent = false; 
-    }, 0);
+    if (isSafari) {
+        // Safari seems to run all selection event handlers before user-queued
+        // tasks.  So this will run after queued selectionchange events.  However,
+        // it's hacky -- it's at least theoretically possible that some other
+        // event handler could modify the selection (including by modifying the
+        // DOM) before we get around to this.
+        window.setTimeout(() => {
+            squelchEvent = false; 
+        }, 0);
+    }
 };
 
 document.addEventListener('selectionchange', selectionChangeHandler);
 
 export function getSelectionRange(root) {
-    const selection = document.getSelection();
-    if (!selection.containsNode(root, true)) {
-        return null;
+
+    // Only Chrome AFAIK
+    if (hasShadowSelection) {
+        const s = root.getSelection();
+        if (!root.anchorNode) { return null;}
+         return  {
+            anchorNode: s.anchorNode,
+            anchorOffset: s.anchorOffset,
+            focusNode: s.focusNode,
+            focusOffset: s.focusOffset
+        };
     }
+
+    // Firefox
+    if (!isSafari) {
+        const s = document.getSelection();
+        if (!root.anchorNode) { return null;}
+
+        if (!s.containsNode(root, true)) {
+            return null;
+        }
+
+        return  {
+            anchorNode: s.anchorNode,
+            anchorOffset: s.anchorOffset,
+            focusNode: s.focusNode,
+            focusOffset: s.focusOffset
+        };
+    }
+
+    // Safari.  Here we go!
+    const selection = document.getSelection();
+    console.log("Real selection:", selection);
 
     function getLeftNode(node) {
         let children = Array.from(node.childNodes);
@@ -147,8 +213,15 @@ export function getSelectionRange(root) {
         return null;
     }    
 
-    let [leftNode, leftOffset] = getLeftNode(root);
-    let [rightNode, rightOffset] = getRightNode(root);
+    let leftResult = getLeftNode(root);
+    let rightResult = getRightNode(root);
+
+    if (!leftResult || !rightResult) {
+        return null;
+    }
+
+    let [leftNode, leftOffset] = leftResult;
+    let [rightNode, rightOffset] = rightResult;
     let direction = null;
         
     if ((leftOffset === null) && (rightOffset === null)) {
@@ -311,6 +384,7 @@ export function getSelectionRange(root) {
     if (!direction) {
         console.log("FAIL: direction is null");
     }
+
     if (direction === "LeftIsFocus") {
         result = {
             anchorNode: rightNode,
@@ -329,8 +403,20 @@ export function getSelectionRange(root) {
     
     selection.collapse(result.anchorNode, result.anchorOffset);
     selection.extend(result.focusNode, result.focusOffset);
-
-
     return result;
 }
 
+export function setSelectionRange(root, range) {
+    let selection;
+    if (hasShadowSelection) {
+        selection = root.getSelection();
+    } else {
+        selection = document.getSelection();
+    }
+    if (!range) {
+        selection.removeAllRanges();
+        return;
+    }
+    selection.collapse(range.anchorNode, range.anchorOffset);
+    selection.extend(range.focusNode, range.focusOffset);
+}
