@@ -24,7 +24,6 @@
 // nodes, you can ultimately derive the offsets within text nodes as well.
 
  
-document.addEventListener('selectionchange', selectionChangeHandler);
 
 // Don't propagate selectionchanged events when true
 let squelchEvent = false;
@@ -48,18 +47,18 @@ function selectionChangeHandler(e) {
     // it's hacky -- it's at least theoretically possible that some other
     // event handler could modify the selection (including by modifying the
     // DOM) before we get around to this.
-    window.setTimeout(() => {squelchEvent = false;}, 0);
+    window.setTimeout(() => {
+        squelchEvent = false; 
+    }, 0);
 };
 
+document.addEventListener('selectionchange', selectionChangeHandler);
 
 export function getSelectionRange(root) {
     const selection = document.getSelection();
     if (!selection.containsNode(root, true)) {
-        console.log("getSelectionRange early exit");
         return null;
     }
-
-    squelchEvent = true;
 
     function getLeftNode(node) {
         let children = Array.from(node.childNodes);
@@ -150,7 +149,7 @@ export function getSelectionRange(root) {
 
     let [leftNode, leftOffset] = getLeftNode(root);
     let [rightNode, rightOffset] = getRightNode(root);
-    let direction = "None";
+    let direction = null;
         
     if ((leftOffset === null) && (rightOffset === null)) {
 
@@ -169,14 +168,19 @@ export function getSelectionRange(root) {
 
                 // Now, move selection back to rightNode
                 selection.extend(rightNode, 0);
-                rightOffset = initialLength - selection.toString().length;      
+                rightOffset = initialLength - selection.toString().length;     
+
+                direction = "RightIsFocus"; 
             } else {
                 // Left node was focus.  So we just added a leftOffset's worth of text to the selection
                 leftOffset = selection.toString().length - initialLength;
 
+
                 // Now, shrink selection to just be rightOffset's worth of text
                 selection.extend(rightNode, 0);
                 rightOffset = selection.toString().length;
+
+                direction = "LeftIsFocus";
             }
         } else {
             // Selection is within one text node.
@@ -187,7 +191,9 @@ export function getSelectionRange(root) {
                 selection.extend(leftNode, 0);
 
                 leftOffset = selection.toString().length;
+
                 rightOffset = leftOffset;
+                direction = "None";
             } else {
                 let initialNext = leftNode.nextSibling;
                 let initialData = leftNode.data;
@@ -197,7 +203,9 @@ export function getSelectionRange(root) {
                     // With apologies to all MutationObservers, we find the selection by mutating things until the
                     // selection itself changes.  Basically, we split the last character off the node over and over.
                     leftNode.splitText(dataLength - 1);
-                    
+
+                    // For what it's worth, Safari doesn't generate a selectionchange event on a text node split, even though it changes
+                    // the selection. 
 
                     // If the removed character was outside the selection, selection length doesn't change
                     if (selection.toString().length === initialLength) {
@@ -211,6 +219,7 @@ export function getSelectionRange(root) {
                     // Let's add one character back.  In Safari, the selection's anchor or focus will expand
                     // to include that.
                     leftNode.appendData("*");
+                    // I believe this DOES generate a selectionchange event
 
                     // Now we know there's at least one character in the selection. 
                     // So let's send Focus to leftOffset.  If it was already there, length doesn't change.
@@ -226,6 +235,8 @@ export function getSelectionRange(root) {
 
                 // Clean up the mess we made splitting the node -- put back the data and get rid of the 
                 // newly-created nodes.  
+
+                // I believe this DOES generate a selectionchange event
                 leftNode.data = initialData;
                 while (leftNode.nextSibling !== initialNext) {
                     leftNode.nextSibling.remove();
@@ -242,6 +253,7 @@ export function getSelectionRange(root) {
         // Depending on selection direction, we may have moved our former "left" or "right" sides...
         let [newRightNode, newRightOffset] = getRightNode(root);
         if (newRightNode === leftNode) {
+            
             // Looks like the right side was the focus.  We'll put it back in a minute.  But first, math.
             direction = "RightIsFocus";
 
@@ -273,7 +285,8 @@ export function getSelectionRange(root) {
         } else {
             // The right side was the focus.  We just sliced out an offset's worth of text.
             direction = "RightIsFocus";
-            rightOffset = initialLength - selection.toString().length;
+            const selLength = selection.toString().length;
+            rightOffset = initialLength - selLength;
         }
     } else {
         // we just need direction
@@ -293,9 +306,11 @@ export function getSelectionRange(root) {
         }
     }
     
-    
 
     let result;
+    if (!direction) {
+        console.log("FAIL: direction is null");
+    }
     if (direction === "LeftIsFocus") {
         result = {
             anchorNode: rightNode,
@@ -314,6 +329,7 @@ export function getSelectionRange(root) {
     
     selection.collapse(result.anchorNode, result.anchorOffset);
     selection.extend(result.focusNode, result.focusOffset);
+
 
     return result;
 }
