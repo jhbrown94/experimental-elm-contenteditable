@@ -34,6 +34,7 @@ class CustomEditable extends HTMLElement {
     let div = shadowRoot.querySelectorAll('div')[0];
 
     function emitEdited() {
+      if (jhb.isSquelchingEvents()) {console.log("Squelch."); return;}
       const range = jhb.getSelectionRange(shadowRoot);
       console.log("getSelectionRange called from customEditable:", range);
       let elmRange = null;

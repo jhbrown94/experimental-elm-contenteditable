@@ -98,24 +98,26 @@ nodeToHtml html =
 
 
 view state =
-    Html.div []
-        [ Html.node "custom-editable"
-            [ Html.Events.on "edited"
-                (Decode.map2 Edited
-                    (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
-                    (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeOptionalRange)))
-                )
-            , Html.Attributes.attribute "dirty"
-                (if state.dirty then
-                    "true"
+    Html.div [ Html.Attributes.style "width" "800px", Html.Attributes.style "display" "inline" ]
+        [ Html.div [ Html.Attributes.style "display" "inline", Html.Attributes.style "width" "400px" ]
+            [ Html.node "custom-editable"
+                [ Html.Events.on "edited"
+                    (Decode.map2 Edited
+                        (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
+                        (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeOptionalRange)))
+                    )
+                , Html.Attributes.attribute "dirty"
+                    (if state.dirty then
+                        "true"
 
-                 else
-                    "false"
-                )
-            , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
+                     else
+                        "false"
+                    )
+                , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
+                ]
+                (listToHtml state.html)
             ]
-            (listToHtml state.html)
-        , Html.pre [] [ Html.text <| htmlListToString 0 state.html ]
+        , Html.div [ Html.Attributes.style "display" "inline", Html.Attributes.style "width" "400px" ] [ Html.pre [] [ Html.text <| htmlListToString 0 state.html ] ]
         ]
 
 

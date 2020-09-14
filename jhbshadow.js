@@ -56,7 +56,7 @@ const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) ||
 // on a separate task queue from the selectionchange events, which all go first.
 let squelchEvent = false;
 
-export function squelchingEvents() {
+export function isSquelchingEvents() {
     return squelchEvent;
 }
 
@@ -69,15 +69,12 @@ function selectionChangeHandler(e) {
         return;
     }
 
-    if (isSafari) {
-        // Squash duplicates
-        squelchEvent = true;
-    }
-
     // Dispatch our custom event synchronously
     document.dispatchEvent(new CustomEvent(eventName));
 
     if (isSafari) {
+        squelchEvent = true;
+
         // Safari seems to run all selection event handlers before user-queued
         // tasks.  So this will run after queued selectionchange events.  However,
         // it's hacky -- it's at least theoretically possible that some other
