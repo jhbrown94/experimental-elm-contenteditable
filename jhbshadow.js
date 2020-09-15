@@ -17,12 +17,13 @@
  */
 
 
-// This is an attempt at determining the complete selection, down to the
+// This is an attempt at determining the complete selection range, down to the
 // individual HTML node, down to the individual characters, with
 // directionality, inside a shadowRoot on Safari. It is heavily informed by
-// https://github.com/GoogleChromeLabs/shadow-selection-polyfill which is
-// short on comments but long on useful techniques.  Since I have the memory
-// of a sieve, I will attempt to include more comments in here.
+// https://github.com/GoogleChromeLabs/shadow-selection-polyfill which is has
+// many useful techniques -- I took a few lines verbatim, and drwew
+// inspiration from the rest.  Since I have the memory of a sieve, I will
+// attempt to include a lot of comments in this file.
 
 // To begin with, why are we here?  
 
@@ -43,7 +44,7 @@
 // nodes, you can ultimately derive the offsets within text nodes as well.
 
 
-// Taken almost literally from
+// These lines are taken almost verbatim from
 // https://github.com/GoogleChromeLabs/shadow-selection-polyfill
 const hasShadowSelection = !!(document.createElement('div').attachShadow({ mode: 'open' }).getSelection);
 const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) ||
