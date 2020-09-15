@@ -93,14 +93,13 @@ export function getSelectionRange(root) {
     // Only Chrome AFAIK
     if (hasShadowSelection) {
         const s = root.getSelection();
-        console.log("Chrome shadow selection", s);
-        if (!s.anchorNode) { console.log("Early bail."); return null;}
-        return  {
+
+        return s.anchorNode ? {
             anchorNode: s.anchorNode,
             anchorOffset: s.anchorOffset,
             focusNode: s.focusNode,
             focusOffset: s.focusOffset
-        };
+        } : null;
     }
 
     // Firefox
@@ -112,17 +111,16 @@ export function getSelectionRange(root) {
             return null;
         }
 
-        return  {
+        return s.anchorNode ? {
             anchorNode: s.anchorNode,
             anchorOffset: s.anchorOffset,
             focusNode: s.focusNode,
             focusOffset: s.focusOffset
-        };
+        } : null;
     }
 
     // Safari.  Here we go!
     const selection = document.getSelection();
-    console.log("Real selection:", selection);
 
     function getLeftNode(node) {
         let children = Array.from(node.childNodes);
@@ -133,8 +131,8 @@ export function getSelectionRange(root) {
                 // This child is fully contained.  It is the node.  
 
                 // If it's text, we have to find the text location.
+                // NOTE: if the text location is 0, we need to return the parent -- we deal with that later in the flow.
                 if (typeof child.length !== 'undefined') {
-
                    return [child, null];
                 }
 
@@ -196,7 +194,10 @@ export function getSelectionRange(root) {
 
             if (selection.containsNode(child, true)) {
                 // This chld is partially contained.
-     
+                if (typeof child.length !== 'undefined') {
+                }
+
+
                 // Is one of its kids the node?
                 const result = getRightNode(child);
                 if (result) { return result; }
@@ -211,6 +212,9 @@ export function getSelectionRange(root) {
         return null;
     }    
 
+    if (selection.containsNode(root)) {
+
+    }
     let leftResult = getLeftNode(root);
     let rightResult = getRightNode(root);
 
@@ -221,7 +225,7 @@ export function getSelectionRange(root) {
     let [leftNode, leftOffset] = leftResult;
     let [rightNode, rightOffset] = rightResult;
     let direction = null;
-        
+    
     if ((leftOffset === null) && (rightOffset === null)) {
 
         if (leftNode !== rightNode) {
@@ -233,16 +237,7 @@ export function getSelectionRange(root) {
             selection.extend(leftNode, 0);
 
             let [newRightNode, newRightOffset] = getRightNode(root);
-            if (newRightNode == leftNode) {
-                // Turns out the right node was focus.  Now selection is from start of text to left offset
-                leftOffset = selection.toString().length;
-
-                // Now, move selection back to rightNode
-                selection.extend(rightNode, 0);
-                rightOffset = initialLength - selection.toString().length;     
-
-                direction = "RightIsFocus"; 
-            } else {
+            if (newRightNode === rightNode && newRightOffset === rightOffset) {
                 // Left node was focus.  So we just added a leftOffset's worth of text to the selection
                 leftOffset = selection.toString().length - initialLength;
 
@@ -252,7 +247,16 @@ export function getSelectionRange(root) {
                 rightOffset = selection.toString().length;
 
                 direction = "LeftIsFocus";
-            }
+            } else {
+                // Turns out the right node was focus.  Now selection is from start of text to left offset
+                leftOffset = selection.toString().length;
+
+                // Now, move selection back to rightNode
+                selection.extend(rightNode, 0);
+                rightOffset = initialLength - selection.toString().length;     
+
+                direction = "RightIsFocus"; 
+            } 
         } else {
             // Selection is within one text node.
             let initialLength = selection.toString().length;
@@ -315,7 +319,6 @@ export function getSelectionRange(root) {
             }
         }
     } else if (leftOffset === null) {
-        
 
         // Right is solid.  It should be a non-text node, i.e. not this one.
         const initialLength = selection.toString().length;
@@ -323,42 +326,46 @@ export function getSelectionRange(root) {
 
         // Depending on selection direction, we may have moved our former "left" or "right" sides...
         let [newRightNode, newRightOffset] = getRightNode(root);
-        if (newRightNode === leftNode) {
-            
-            // Looks like the right side was the focus.  We'll put it back in a minute.  But first, math.
+
+
+        // we have to confirm that rightNode and rightOffset are unchanged --
+        // it's possible to bring the focus to leftNode, 0, but then have
+        // that get promoted to some ancestor of leftnode -- which could
+        // be rightNode at a different offset
+        if (newRightNode === rightNode && rightOffset == newRightOffset) {
+            // The left side was the focus.  We just added an offset's worth of text.
+            direction = "LeftIsFocus";
+            leftOffset = selection.toString().length - initialLength;
+        } else {
             direction = "RightIsFocus";
+
+            // Looks like the right side was the focus.  We'll put it back in a minute.  But first, math.
 
             // We've selected from the offset point to the beginning of the text node.
             
             leftOffset = selection.toString().length;
-        } else {
-            // The right side was the focus.  We just added an offset's worth of text.
-            direction = "LeftIsFocus";
-            leftOffset = selection.toString().length - initialLength;
         }
-
     } else if (rightOffset === null) {
-        
-
+    
         // Left is solid.  It should be a non-text node, i.e. not this one.
         const initialLength = selection.toString().length;
         selection.extend(rightNode, 0);
 
         // Depending on selection direction, we may have moved our former "left" or "right" sides...
         let [newLeftNode, newLeftOffset] = getLeftNode(root);
-        if (newLeftNode === rightNode) {
+        if (newLeftNode === leftNode && newLeftOffset == leftOffset) {
+            // The right side was the focus.  We just shrunk the selection by an offset's worth of text.
+            direction = "RightIsFocus";
+            const selLength = selection.toString().length;
+            rightOffset = initialLength - selLength;
+        } else {
             // Looks like the left side was the focus.  We'll put it back in a minute.  But first, math.
             direction = "LeftIsFocus";
 
             // We've selected from the offset point to the beginning of the text node.
-            
             rightOffset = selection.toString().length;
-        } else {
-            // The right side was the focus.  We just sliced out an offset's worth of text.
-            direction = "RightIsFocus";
-            const selLength = selection.toString().length;
-            rightOffset = initialLength - selLength;
-        }
+        } 
+
     } else {
         // we just need direction
         if (leftNode !== rightNode || leftOffset !== rightOffset) {
@@ -380,7 +387,7 @@ export function getSelectionRange(root) {
 
     let result;
     if (!direction) {
-        console.log("FAIL: direction is null");
+        console.log("FAIL: direction should not be null by this point.");
     }
 
     if (direction === "LeftIsFocus") {
@@ -398,6 +405,7 @@ export function getSelectionRange(root) {
             focusOffset: rightOffset
         };
     }
+
     
     selection.collapse(result.anchorNode, result.anchorOffset);
     selection.extend(result.focusNode, result.focusOffset);

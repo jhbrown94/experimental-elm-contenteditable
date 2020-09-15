@@ -34,12 +34,9 @@ class CustomEditable extends HTMLElement {
     let div = shadowRoot.querySelectorAll('div')[0];
 
     function emitEdited() {
-      if (jhb.isSquelchingEvents()) {console.log("Squelch."); return;}
-      console.log("Mutated.");
+      if (jhb.isSquelchingEvents()) { return;}
       const range = jhb.getSelectionRange(shadowRoot);
-      console.log("getSelectionRange called from customEditable:", range);
       let elmRange = null;
-
 
       if (range) {
         elmRange = {end: self.nodePath(range.focusOffset, range.focusNode), 
@@ -98,7 +95,6 @@ class CustomEditable extends HTMLElement {
         focusOffset: endPath.shift()
       }
     }
-    console.log("SetSelectionRange", range);
     jhb.setSelectionRange(self.shadowRoot, range);
   }
   
