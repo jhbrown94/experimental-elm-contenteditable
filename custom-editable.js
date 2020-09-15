@@ -30,7 +30,7 @@ class CustomEditable extends HTMLElement {
     shadowRoot.appendChild(templateContent.cloneNode(true));
 
     let slots = shadowRoot.querySelectorAll('slot');
-    slots[0].addEventListener('slotchange', function (e) {self.slotChangeCallback(e);});
+    //slots[0].addEventListener('slotchange', function (e) {self.slotChangeCallback(e);});
     let div = shadowRoot.querySelectorAll('div')[0];
 
     function emitEdited() {

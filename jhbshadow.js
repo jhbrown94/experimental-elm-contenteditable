@@ -105,7 +105,6 @@ export function getSelectionRange(root) {
     // Firefox
     if (!isSafari) {
         const s = document.getSelection();
-        if (!root.anchorNode) { return null;}
 
         if (!s.containsNode(root, true)) {
             return null;
