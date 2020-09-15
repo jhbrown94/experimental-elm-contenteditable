@@ -35,6 +35,7 @@ class CustomEditable extends HTMLElement {
 
     function emitEdited() {
       if (jhb.isSquelchingEvents()) {console.log("Squelch."); return;}
+      console.log("Mutated.");
       const range = jhb.getSelectionRange(shadowRoot);
       console.log("getSelectionRange called from customEditable:", range);
       let elmRange = null;

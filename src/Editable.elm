@@ -98,10 +98,20 @@ nodeToHtml html =
 
 
 view state =
-    Html.div [ Html.Attributes.style "width" "800px", Html.Attributes.style "display" "inline" ]
-        [ Html.div [ Html.Attributes.style "display" "inline", Html.Attributes.style "width" "400px" ]
+    Html.div
+        [ Html.Attributes.style "display" "flex"
+        , Html.Attributes.style "flex-flow" "row nowrap"
+        , Html.Attributes.style "width" "100%"
+        ]
+        [ Html.div
+            [ Html.Attributes.style "flex-grow" "1"
+            , Html.Attributes.style "border" "1px solid black"
+            ]
             [ Html.node "custom-editable"
-                [ Html.Events.on "edited"
+                [ Html.Attributes.style "width" "100%"
+                , Html.Attributes.style "height" "100%"
+                , Html.Events.on
+                    "edited"
                     (Decode.map2 Edited
                         (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
                         (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeOptionalRange)))
@@ -117,7 +127,11 @@ view state =
                 ]
                 (listToHtml state.html)
             ]
-        , Html.div [ Html.Attributes.style "display" "inline", Html.Attributes.style "width" "400px" ] [ Html.pre [] [ Html.text <| htmlListToString 0 state.html ] ]
+        , Html.div
+            [ Html.Attributes.style "flex-grow" "1"
+            , Html.Attributes.style "border" "1px solid black"
+            ]
+            [ Html.pre [] [ Html.text <| htmlListToString 0 state.html ] ]
         ]
 
 

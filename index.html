@@ -7,16 +7,15 @@
   <script src="custom-editable.js"></script>
 </head>
 
-<body>
+<body style="width: 100%">
 
 
   <template id="editable-template">
     <slot hidden="true">No slot content</slot>
     <div contenteditable="true" class="editable-template-container" style="display: inline">Failed to prefill</div>
   </template>
-  <div id="elm"></div>
-<!-- 
-  <custom-editable>nada</custom-editable> -->
+  <div id="elm" style="width: 100%"></div>
+
 
  <script src="./index.js"></script>
 

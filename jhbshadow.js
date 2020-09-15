@@ -93,8 +93,9 @@ export function getSelectionRange(root) {
     // Only Chrome AFAIK
     if (hasShadowSelection) {
         const s = root.getSelection();
-        if (!root.anchorNode) { return null;}
-         return  {
+        console.log("Chrome shadow selection", s);
+        if (!s.anchorNode) { console.log("Early bail."); return null;}
+        return  {
             anchorNode: s.anchorNode,
             anchorOffset: s.anchorOffset,
             focusNode: s.focusNode,
