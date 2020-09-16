@@ -30,12 +30,9 @@ class CustomEditable extends HTMLElement {
     shadowRoot.appendChild(templateContent.cloneNode(true));
 
     let slots = shadowRoot.querySelectorAll('slot');
-    //slots[0].addEventListener('slotchange', function (e) {self.slotChangeCallback(e);});
     let div = shadowRoot.querySelectorAll('div')[0];
 
-    function emitEdited() {
-      if (jhb.isSquelchingEvents()) { return;}
-      const range = jhb.getSelectionRange(shadowRoot);
+    function emitEdited() {      const range = jhb.getSelectionRange(shadowRoot);
       let elmRange = null;
 
       if (range) {
@@ -47,10 +44,10 @@ class CustomEditable extends HTMLElement {
       div.dispatchEvent(event);      
     }
 
-    var obs = new MutationObserver(function(mutations, observer) { emitEdited();});
+    var obs = new MutationObserver(() => emitEdited());
     obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
-    document.addEventListener(jhb.eventName, function () {emitEdited();});
+    document.addEventListener('selectionchange', () => emitEdited(););
   }
 
   connectedCallback() {
@@ -100,7 +97,7 @@ class CustomEditable extends HTMLElement {
   
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name == "dirty") {
+    if (name == "dirty" && newValue) {
      this.slotChangeCallback();
    }
  }
