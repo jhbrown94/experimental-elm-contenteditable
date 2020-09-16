@@ -47,7 +47,7 @@ class CustomEditable extends HTMLElement {
     var obs = new MutationObserver(() => emitEdited());
     obs.observe(div, {subtree: true, childList: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true});
 
-    document.addEventListener('selectionchange', () => emitEdited(););
+    document.addEventListener('selectionchange', () => emitEdited());
   }
 
   connectedCallback() {
