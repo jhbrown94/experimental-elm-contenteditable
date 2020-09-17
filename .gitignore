@@ -1,6 +1,6 @@
-elm-stuff
+/elm-stuff
 .DS_Store
-main.js
-*.sublime-*
-node_modules
-.cache
+/main.js
+/node_modules
+/.cache
+/dist

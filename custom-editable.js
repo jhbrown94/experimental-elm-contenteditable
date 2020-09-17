@@ -1,6 +1,6 @@
 //const shadow = require('shadow-selection-polyfill');
 
-import * as jhb from "./jhbshadow.js";
+const jhb = require ('@jhbrown94/selectionrange');
 
 class CustomEditable extends HTMLElement {
 
