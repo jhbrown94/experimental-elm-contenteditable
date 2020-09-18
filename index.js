@@ -1,6 +1,6 @@
-import { Elm } from './src/Editable.elm'
+import { Elm } from './src/Main.elm'
 
-      var app = Elm.Editable.init({
+      var app = Elm.Main.init({
         node: document.getElementById('elm')
-        , flags: null
+        , flags:  window.navigator.userAgent
     });

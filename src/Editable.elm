@@ -1,4 +1,15 @@
-module Editable exposing (..)
+module Editable exposing
+    ( Html(..)
+    , Model
+    , Msg(..)
+    , getHtml
+    , htmlListToString
+    , htmlToString
+    , init
+    , mapHtml
+    , update
+    , view
+    )
 
 import Browser
 import Html
@@ -8,11 +19,22 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 
 
+type Model
+    = Model State
+
+
 type alias State =
     { html : HtmlList
     , selection : Maybe Range
-    , dirty : Bool
     }
+
+
+getHtml (Model state) =
+    state.html
+
+
+mapHtml f (Model state) =
+    Model { state | html = f state.html }
 
 
 type Html
@@ -95,64 +117,6 @@ nodeToHtml html =
 
         Text text ->
             Html.text text
-
-
-view state =
-    Html.div
-        [ Html.Attributes.style "display" "flex"
-        , Html.Attributes.style "flex-flow" "row nowrap"
-        , Html.Attributes.style "width" "100%"
-        ]
-        [ Html.div
-            [ Html.Attributes.style "flex-grow" "1"
-            , Html.Attributes.style "border" "1px solid black"
-            ]
-            [ Html.node "custom-editable"
-                [ Html.Attributes.style "width" "100%"
-                , Html.Attributes.style "height" "100%"
-                , Html.Events.on
-                    "edited"
-                    (Decode.map2 Edited
-                        (loggingDecoder (Decode.field "detail" (Decode.field "html" decodeHtmlList)))
-                        (loggingDecoder (Decode.field "detail" (Decode.field "selection" decodeOptionalRange)))
-                    )
-                , Html.Attributes.attribute "dirty"
-                    (if state.dirty then
-                        "true"
-
-                     else
-                        "false"
-                    )
-                , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
-                ]
-                (listToHtml state.html)
-            ]
-        , Html.div
-            [ Html.Attributes.style "flex-grow" "1"
-            , Html.Attributes.style "border" "1px solid black"
-            ]
-            [ Html.pre [] [ Html.text <| htmlListToString 0 state.html ] ]
-        ]
-
-
-
--- loggingDecoder is from https://thoughtbot.com/blog/debugging-dom-event-handlers-in-elm
-
-
-loggingDecoder realDecoder =
-    Decode.value
-        |> Decode.andThen
-            (\event ->
-                case Decode.decodeValue realDecoder event of
-                    Ok decoded ->
-                        Decode.succeed decoded
-
-                    Err error ->
-                        error
-                            |> Decode.errorToString
-                            |> Debug.log "decoding error"
-                            |> Decode.fail
-            )
 
 
 decodeOptionalRange =
@@ -261,46 +225,35 @@ decodeHtml =
             )
 
 
-type Msg
-    = Edited HtmlList (Maybe Range)
+view (Model state) =
+    Html.node "custom-editable"
+        [ Html.Attributes.style "width" "100%"
+        , Html.Attributes.style "height" "100%"
+        , Html.Events.stopPropagationOn
+            "edited"
+            (Decode.map2 Tuple.pair
+                (Decode.map2 Edited
+                    (Decode.field "detail" (Decode.field "html" decodeHtmlList))
+                    (Decode.field "detail" (Decode.field "selection" decodeOptionalRange))
+                )
+                (Decode.succeed True)
+            )
+        , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
+        ]
+        (listToHtml (Debug.log "State html" state.html))
 
 
-demoFilter htmlList =
-    List.map
-        (\n ->
-            case n of
-                Text value ->
-                    Text (String.replace "teh " "the " value)
-
-                Element k a c ->
-                    Element k a (demoFilter c)
-        )
-        htmlList
-
-
-update msg state =
+update : Msg -> Model -> Model
+update msg (Model state) =
     case msg of
         Edited htmlList selection ->
-            let
-                newHtml =
-                    htmlList |> demoFilter
-
-                dirty =
-                    htmlList /= newHtml
-
-                _ =
-                    if dirty then
-                        Debug.log "dirty" dirty
-
-                    else
-                        dirty
-            in
-            { state | html = newHtml, selection = selection, dirty = dirty }
+            Model { state | html = htmlList, selection = selection }
 
 
-main =
-    Browser.sandbox
-        { view = view
-        , update = update
-        , init = State [ Element "i" [] [ Text "hello world from Elm" ] ] Nothing True
-        }
+init : HtmlList -> Model
+init htmlList =
+    Model { html = htmlList, selection = Nothing }
+
+
+type Msg
+    = Edited HtmlList (Maybe Range)
