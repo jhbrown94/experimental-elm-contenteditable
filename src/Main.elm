@@ -2,6 +2,8 @@ module Main exposing (..)
 
 import Browser
 import Editable
+import Element as E
+import Element.Border as EB
 import Html
 import Html.Attributes
 import Html.Events
@@ -19,25 +21,22 @@ type alias Model =
 
 view : Model -> Html.Html Msg
 view { userAgent, editable } =
-    Html.div []
-        [ Html.text <| "User agent: " ++ userAgent
-        , Html.div
-            [ Html.Attributes.style "display" "flex"
-            , Html.Attributes.style "flex-flow" "row nowrap"
-            , Html.Attributes.style "width" "100%"
-            ]
-            [ Html.div
-                [ Html.Attributes.style "flex-grow" "1"
-                , Html.Attributes.style "border" "1px solid black"
+    E.layout [ E.width E.fill ] <|
+        E.column
+            [ E.width E.fill, E.padding 10, EB.width 1 ]
+            [ E.text <| "User agent: " ++ userAgent
+            , E.row [ E.width E.fill, E.spacing 12, E.padding 12 ]
+                [ E.el [ E.alignTop, E.width E.fill, EB.width 1, E.padding 4 ] <|
+                    E.html
+                        (Editable.view
+                            [ Html.Attributes.style "display" "flex" ]
+                            editable
+                        )
+                , E.el [ E.width E.fill, EB.width 1 ] <|
+                    E.html <|
+                        Html.pre [] [ Html.text <| Editable.htmlListToString 0 (Editable.getHtml editable) ]
                 ]
-                [ Editable.view editable ]
-            , Html.div
-                [ Html.Attributes.style "flex-grow" "1"
-                , Html.Attributes.style "border" "1px solid black"
-                ]
-                [ Html.pre [] [ Html.text <| Editable.htmlListToString 0 (Editable.getHtml editable) ] ]
             ]
-        ]
 
 
 

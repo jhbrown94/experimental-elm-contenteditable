@@ -225,11 +225,9 @@ decodeHtml =
             )
 
 
-view (Model state) =
+view attrs (Model state) =
     Html.node "custom-editable"
-        [ Html.Attributes.style "width" "100%"
-        , Html.Attributes.style "height" "100%"
-        , Html.Events.stopPropagationOn
+        ([ Html.Events.stopPropagationOn
             "edited"
             (Decode.map2 Tuple.pair
                 (Decode.map2 Edited
@@ -238,8 +236,10 @@ view (Model state) =
                 )
                 (Decode.succeed True)
             )
-        , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
-        ]
+         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
+         ]
+            ++ attrs
+        )
         (listToHtml (Debug.log "State html" state.html))
 
 
