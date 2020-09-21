@@ -1,3 +1,32 @@
+-- Copyright 2020, Jeremy H. Brown
+--
+-- Redistribution and use in source and binary forms, with or without
+-- modification, are permitted provided that the following conditions are met:
+--
+-- 1. Redistributions of source code must retain the above copyright notice,
+-- this list of conditions and the following disclaimer.
+--
+-- 2. Redistributions in binary form must reproduce the above copyright
+-- notice, this list of conditions and the following disclaimer in the
+-- documentation and/or other materials provided with the distribution.
+--
+-- 3. Neither the name of the copyright holder nor the names of its
+-- contributors may be used to endorse or promote products derived from this
+-- software without specific prior written permission.
+--
+-- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+-- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+-- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+-- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+-- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+-- CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+-- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+-- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+-- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+-- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+-- POSSIBILITY OF SUCH DAMAGE.
+
+
 module Editable exposing
     ( Html(..)
     , Selection(..)
@@ -20,13 +49,50 @@ import Json.Encode as Encode
 
 
 
--- State for a content-editable
+-- Put an editable into the view
+
+
+editable attrs msg state =
+    Html.node "custom-editable"
+        ([ Html.Events.stopPropagationOn
+            "edited"
+            (Decode.map2 Tuple.pair
+                (Decode.map msg
+                    (Decode.map2 State
+                        (Decode.field "detail" (Decode.field "html" decodeHtmlList))
+                        (Decode.field "detail" (Decode.field "selection" decodeSelection))
+                    )
+                )
+                (Decode.succeed True)
+            )
+         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
+         ]
+            ++ attrs
+        )
+        (listToHtml state.html)
+
+
+
+-- Initial state for an editable
+
+
+init : HtmlList -> State
+init htmlList =
+    { html = htmlList, selection = NoSelection }
+
+
+
+-- State and operators
 
 
 type alias State =
     { html : HtmlList
     , selection : Selection
     }
+
+
+
+-- Gives you back the index'th child node, and as much of the selection as is visible from that node.
 
 
 descendState : Int -> State -> ( Maybe Html, Selection )
@@ -71,6 +137,56 @@ type Html
 
 type alias Kind =
     String
+
+
+nodeToHtml html =
+    case html of
+        Element kind attributes children ->
+            Html.node kind (List.map (\{ name, value } -> Html.Attributes.attribute name value) attributes) (listToHtml children)
+
+        Text text ->
+            Html.text text
+
+
+listToHtml htmlList =
+    List.map nodeToHtml htmlList
+
+
+decodeHtmlElement =
+    Decode.map3 Element
+        (Decode.field "tagName" Decode.string)
+        (Decode.field "attributes" decodeAttributes)
+        (Decode.field "childNodes" decodeHtmlList)
+
+
+decodeAttributes =
+    Decode.keyValuePairs decodeAttribute |> Decode.map (List.map Tuple.second)
+
+
+decodeAttribute =
+    Decode.map2 Attribute (Decode.field "name" Decode.string) (Decode.field "value" Decode.string)
+
+
+decodeHtmlList =
+    Decode.keyValuePairs decodeHtml |> Decode.map (List.map Tuple.second)
+
+
+decodeHtmlText =
+    Decode.map Text (Decode.field "data" Decode.string)
+
+
+decodeHtml =
+    Decode.field "nodeName" Decode.string
+        |> Decode.andThen
+            (\nodeName ->
+                case nodeName of
+                    "#text" ->
+                        decodeHtmlText
+
+                    -- TODO: there could be non-tagname things, see https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeName
+                    tagName ->
+                        decodeHtmlElement
+            )
 
 
 
@@ -178,6 +294,50 @@ descendSelection index selection =
             selection
 
 
+descendRange : Int -> HtmlPosition -> HtmlPosition -> Maybe ( HtmlPosition, HtmlPosition )
+descendRange index left right =
+    case ( left, right ) of
+        ( l :: lrest, r :: rrest ) ->
+            if index == l then
+                if index == r then
+                    Just <| ( lrest, rrest )
+
+                else
+                    Just <| ( lrest, [] )
+
+            else if index == r then
+                Just <| ( [], rrest )
+
+            else if index > l && index < r then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( l :: lrest, [] ) ->
+            if index == l then
+                Just <| ( lrest, [] )
+
+            else if index > l then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( [], r :: rrest ) ->
+            if index == r then
+                Just <| ( [], rrest )
+
+            else if index < r then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( [], [] ) ->
+            Just <| ( [], [] )
+
+
 
 -- HtmlPosition and operators
 
@@ -231,7 +391,7 @@ cmpHtmlPosition left right =
 
 
 
--- CERange and operators -- this is what custom-editable.js talks in terms of
+-- CERange and operators -- this is what custom-editable.js talks in terms of -- focus and anchor rather than left and right.
 
 
 type alias CERange =
@@ -244,175 +404,3 @@ decodeCERange =
 
 encodeCERange range =
     Encode.object [ ( "anchor", encodeHtmlPosition range.anchor ), ( "focus", encodeHtmlPosition range.focus ) ]
-
-
-
--- Descending a selection range
-
-
-descendRange : Int -> HtmlPosition -> HtmlPosition -> Maybe ( HtmlPosition, HtmlPosition )
-descendRange index left right =
-    case ( left, right ) of
-        ( l :: lrest, r :: rrest ) ->
-            if index == l then
-                if index == r then
-                    Just <| ( lrest, rrest )
-
-                else
-                    Just <| ( lrest, [] )
-
-            else if index == r then
-                Just <| ( [], rrest )
-
-            else if index > l && index < r then
-                Just <| ( [], [] )
-
-            else
-                Nothing
-
-        ( l :: lrest, [] ) ->
-            if index == l then
-                Just <| ( lrest, [] )
-
-            else if index > l then
-                Just <| ( [], [] )
-
-            else
-                Nothing
-
-        ( [], r :: rrest ) ->
-            if index == r then
-                Just <| ( [], rrest )
-
-            else if index < r then
-                Just <| ( [], [] )
-
-            else
-                Nothing
-
-        ( [], [] ) ->
-            Just <| ( [], [] )
-
-
-
--- Ill-sorted stuff below here TODO organize this
-
-
-nodeToHtml html =
-    case html of
-        Element kind attributes children ->
-            Html.node kind (List.map (\{ name, value } -> Html.Attributes.attribute name value) attributes) (listToHtml children)
-
-        Text text ->
-            Html.text text
-
-
-listToHtml htmlList =
-    List.map nodeToHtml htmlList
-
-
-
--- Future TODO: lots of operations that modify the HTML and preserve/update the selection appropriately
--- removeSelection
--- replaceSelection
--- insertAfterCaret
--- insertBeforeCaret
--- nestSelectionIn - creates a new node and puts the selection as a child of that node, e.g. for adding styling to the entire selection
--- normalize (merges adjacent text nodes, and optionally spans with identical attributes, and MAYBE even divs ...?  maybe there's a variant that takes a function to assess mergeability)
--- collapse (replace a parent node with its children, e.g. removing a styling node)
--- possibly zipper-type operations so that we can traverse and modify in some coherent manner
--- Version 1: shovel the entire HTML tree over the port on every call.  If people use this, we'll think about efficiency (diffs & vdom & etc.) down the road.
---encodeHtmlElement tagName attributes children =
---    Encode.object [ ( "nodeName", Encode.string tagName ), ( "attributes", encodeAttributes attributes ), ( "childNodes", encodeHtmlList children ) ]
-
-
-decodeHtmlElement =
-    Decode.map3 Element
-        (Decode.field "tagName" Decode.string)
-        (Decode.field "attributes" decodeAttributes)
-        (Decode.field "childNodes" decodeHtmlList)
-
-
-
---encodeAttributes attributes =
---    Encode.list encodeAttribute attributes
-
-
-decodeAttributes =
-    Decode.keyValuePairs decodeAttribute |> Decode.map (List.map Tuple.second)
-
-
-
---encodeAttribute attribute =
---    Encode.object [ ( "name", Encode.string attribute.name ), ( "value", Encode.string attribute.value ) ]
-
-
-decodeAttribute =
-    Decode.map2 Attribute (Decode.field "name" Decode.string) (Decode.field "value" Decode.string)
-
-
-
---encodeHtmlList htmlList =
---    Encode.list encodeHtml htmlList
-
-
-decodeHtmlList =
-    Decode.keyValuePairs decodeHtml |> Decode.map (List.map Tuple.second)
-
-
-
---encodeHtmlText text =
---    Encode.object [ ( "nodeName", Encode.string "#text" ), ( "data", Encode.string text ) ]
--- https://developer.mozilla.org/en-US/docs/Web/API/CharacterData
-
-
-decodeHtmlText =
-    Decode.map Text (Decode.field "data" Decode.string)
-
-
-
---encodeHtml html =
---    case html of
---        Element tagName attributes children ->
---            encodeHtmlElement tagName attributes children
---        Text text ->
---            encodeHtmlText text
-
-
-decodeHtml =
-    Decode.field "nodeName" Decode.string
-        |> Decode.andThen
-            (\nodeName ->
-                case nodeName of
-                    "#text" ->
-                        decodeHtmlText
-
-                    -- TODO: there could be non-tagname things, see https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeName
-                    tagName ->
-                        decodeHtmlElement
-            )
-
-
-editable attrs msg state =
-    Html.node "custom-editable"
-        ([ Html.Events.stopPropagationOn
-            "edited"
-            (Decode.map2 Tuple.pair
-                (Decode.map msg
-                    (Decode.map2 State
-                        (Decode.field "detail" (Decode.field "html" decodeHtmlList))
-                        (Decode.field "detail" (Decode.field "selection" decodeSelection))
-                    )
-                )
-                (Decode.succeed True)
-            )
-         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
-         ]
-            ++ attrs
-        )
-        (listToHtml (Debug.log "State html" state.html))
-
-
-init : HtmlList -> State
-init htmlList =
-    { html = htmlList, selection = NoSelection }
