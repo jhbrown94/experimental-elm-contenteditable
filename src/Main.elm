@@ -15,31 +15,45 @@ import Json.Encode as Encode
 
 type Msg
     = Edited Editable.State
-    | RemoveStyleAttribute
+    | RemoveAttributes
 
 
 type alias Model =
     { userAgent : String, editorState : Editable.State }
 
 
+highlightColor =
+    E.rgb 0.4 0.9 0.9
+
+
+buttonColor =
+    E.rgb 0.9 0.9 0.9
+
+
 view : Model -> Html.Html Msg
 view { userAgent, editorState } =
-    E.layout [ E.width E.fill ] <|
+    E.layout [ E.width E.fill, E.height E.fill ] <|
         E.column
-            [ E.width E.fill, E.padding 10, E.spacing 10, EB.width 1 ]
-            [ E.text <| "User agent: " ++ userAgent
+            [ E.width E.fill, E.padding 10, E.spacing 10, EB.width 1, E.height E.fill ]
+            [ E.paragraph [ E.width E.fill ] [ E.text <| "User agent: " ++ userAgent ]
             , E.text <| "Selection: " ++ (editorState.selection |> Debug.toString)
-            , EI.button [ EB.width 1, EB.rounded 4, EBackground.color <| E.rgb 0.9 0.9 0.9 ] { onPress = Just RemoveStyleAttribute, label = E.el [ E.padding 4 ] <| E.text "Remove style attributes" }
-            , E.row [ E.width E.fill, E.spacing 12, E.padding 12 ]
-                [ E.el [ E.alignTop, E.width E.fill, EB.width 1, E.padding 4 ] <|
-                    E.html
-                        (Editable.editable
-                            [ Html.Attributes.style "display" "flex" ]
-                            Edited
-                            editorState
-                        )
-                , E.column [ E.width E.fill, EB.width 1 ] <|
-                    viewNodes editorState
+            , EI.button [ EB.width 1, EB.rounded 4, EBackground.color <| buttonColor ] { onPress = Just RemoveAttributes, label = E.el [ E.padding 4 ] <| E.text "Remove attributes" }
+            , E.row [ E.width E.fill, E.spacing 12, E.padding 12, E.height E.fill ]
+                [ E.column [ E.width E.fill, E.spacing 4, E.alignTop ]
+                    [ E.text "Edit in here"
+                    , E.el [ E.alignTop, E.width E.fill, EB.width 1, E.padding 4 ] <|
+                        E.html
+                            (Editable.editable
+                                [ Html.Attributes.style "display" "flex" ]
+                                Edited
+                                editorState
+                            )
+                    ]
+                , E.column [ E.width E.fill, E.scrollbarX, E.spacing 4, E.alignTop, E.height E.fill ]
+                    [ E.text "HTML structure as seen in Elm"
+                    , E.column [ E.width E.fill, EB.width 1, E.scrollbars, E.padding 4, E.height E.fill ] <|
+                        viewNodes editorState
+                    ]
                 ]
             ]
 
@@ -79,7 +93,7 @@ viewNodes state =
                                                 String.dropLeft index text
                                         in
                                         [ E.text pre
-                                        , E.el [ E.width (E.px 8), E.height (E.px 16), EBackground.color (E.rgb 0.9 0.9 0.9) ] E.none
+                                        , E.el [ E.width (E.px 8), E.height (E.px 16), EBackground.color highlightColor ] E.none
                                         , E.text post
                                         ]
 
@@ -101,7 +115,7 @@ viewNodes state =
                                                 String.left rightOffset text |> String.dropLeft leftOffset
                                         in
                                         [ E.text l
-                                        , E.el [ EBackground.color (E.rgb 0.9 0.9 0.9) ] <| E.text m
+                                        , E.el [ EBackground.color highlightColor ] <| E.text m
                                         , E.text r
                                         ]
 
@@ -123,7 +137,7 @@ viewNodes state =
                                                 String.left rightOffset text |> String.dropLeft leftOffset
                                         in
                                         [ E.text l
-                                        , E.el [ EBackground.color (E.rgb 0.9 0.9 0.9) ] <| E.text m
+                                        , E.el [ EBackground.color highlightColor ] <| E.text m
                                         , E.text r
                                         ]
                                )
@@ -169,7 +183,7 @@ demoFilter htmlList =
         htmlList
 
 
-removeStyleAttribute htmlList =
+removeAttributes htmlList =
     List.map
         (\n ->
             case n of
@@ -177,7 +191,7 @@ removeStyleAttribute htmlList =
                     n
 
                 Editable.Element k a c ->
-                    Editable.Element k (List.filter (\attr -> attr.name /= "style") a) (removeStyleAttribute c)
+                    Editable.Element k [] (removeAttributes c)
         )
         htmlList
 
@@ -188,8 +202,8 @@ update msg ({ editorState } as model) =
         Edited state ->
             ( { model | editorState = state |> Editable.mapHtml demoFilter }, Cmd.none )
 
-        RemoveStyleAttribute ->
-            ( { model | editorState = model.editorState |> Editable.mapHtml removeStyleAttribute }, Cmd.none )
+        RemoveAttributes ->
+            ( { model | editorState = model.editorState |> Editable.mapHtml removeAttributes }, Cmd.none )
 
 
 init : String -> ( Model, Cmd Msg )
