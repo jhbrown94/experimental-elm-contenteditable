@@ -52,6 +52,7 @@ import Json.Encode as Encode
 -- Put an editable into the view
 
 
+editable : List (Html.Attribute msg) -> (State -> msg) -> State -> Html.Html msg
 editable attrs msg state =
     Html.node "custom-editable"
         ([ Html.Events.stopPropagationOn
