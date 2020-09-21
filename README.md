@@ -5,7 +5,21 @@ from Elm.  It's not production ready and has many glaring flaws.  Drop me a
 line if you'd like to use it for something real and we can talk about how to
 make it better.
 
-How to use this:
+
+How to run the demo (lightly tested on Chrome, Safari, and Firefox -- no mobile devices though)
+
+1. Install the npm dependencies with `npm install`
+
+2. Install parcel however you like.
+
+3. run `parcel index.html`
+
+
+
+How to use the code in your own project:
+
+First, are you sure that's a good idea?  OK, go for it.
+
 
 1. Install the npm dependencies with `npm install`
 
