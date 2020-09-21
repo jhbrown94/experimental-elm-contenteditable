@@ -1,14 +1,14 @@
 module Editable exposing
     ( Html(..)
-    , Model
-    , Msg(..)
+    , Selection(..)
+    , State
+    , descendState
+    , editable
     , getHtml
     , htmlListToString
     , htmlToString
     , init
     , mapHtml
-    , update
-    , view
     )
 
 import Browser
@@ -19,45 +19,27 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 
 
-type Model
-    = Model State
+
+-- State for a content-editable
 
 
 type alias State =
     { html : HtmlList
-    , selection : Maybe Range
+    , selection : Selection
     }
 
 
-getHtml (Model state) =
+descendState : Int -> State -> ( Maybe Html, Selection )
+descendState index state =
+    ( state.html |> List.drop index |> List.head, descendSelection index state.selection )
+
+
+getHtml state =
     state.html
 
 
-mapHtml f (Model state) =
-    Model { state | html = f state.html }
-
-
-type Html
-    = Element Kind Attributes HtmlList
-    | Text String
-
-
-type alias Kind =
-    String
-
-
-type alias Attribute =
-    { name : String
-    , value : String
-    }
-
-
-type alias Attributes =
-    List Attribute
-
-
-type alias HtmlList =
-    List Html
+mapHtml f state =
+    { state | html = f state.html }
 
 
 htmlToString indent html =
@@ -76,6 +58,37 @@ htmlToString indent html =
 htmlListToString : Int -> HtmlList -> String
 htmlListToString indent htmlList =
     List.foldl (\n a -> a ++ htmlToString indent n) "" htmlList
+
+
+
+-- Html for CE's.
+
+
+type Html
+    = Element Kind Attributes HtmlList
+    | Text String
+
+
+type alias Kind =
+    String
+
+
+
+-- Attributes for the Html
+
+
+type alias Attribute =
+    { name : String
+    , value : String
+    }
+
+
+type alias Attributes =
+    List Attribute
+
+
+type alias HtmlList =
+    List Html
 
 
 attributeToString attr =
@@ -98,16 +111,191 @@ attributesToString indent attrs =
             List.map attributeToString many |> List.foldl (\s a -> a ++ "\n" ++ prefix ++ s) ""
 
 
-type alias Range =
-    { start : HtmlPosition, end : HtmlPosition }
+
+-- Selection and operators
+
+
+type Selection
+    = NoSelection
+    | Caret HtmlPosition
+    | LeftFocus HtmlPosition HtmlPosition
+    | RightFocus HtmlPosition HtmlPosition
+
+
+decodeSelection =
+    Decode.oneOf
+        [ decodeCERange
+            |> Decode.andThen
+                (\cerange ->
+                    case cmpHtmlPosition cerange.anchor cerange.focus of
+                        Equal ->
+                            Decode.succeed <| Caret cerange.focus
+
+                        GreaterThan ->
+                            Decode.succeed <| LeftFocus cerange.focus cerange.anchor
+
+                        LessThan ->
+                            Decode.succeed <| RightFocus cerange.anchor cerange.focus
+                )
+        , Decode.succeed NoSelection
+        ]
+
+
+encodeSelection selection =
+    case selection of
+        NoSelection ->
+            Encode.null
+
+        Caret pos ->
+            encodeCERange <| { anchor = pos, focus = pos }
+
+        LeftFocus left right ->
+            encodeCERange { anchor = right, focus = left }
+
+        RightFocus left right ->
+            encodeCERange { anchor = left, focus = right }
+
+
+descendSelection index selection =
+    case selection of
+        LeftFocus left right ->
+            descendRange index left right |> Maybe.map (\( l, r ) -> LeftFocus l r) |> Maybe.withDefault NoSelection
+
+        RightFocus left right ->
+            descendRange index left right |> Maybe.map (\( l, r ) -> RightFocus l r) |> Maybe.withDefault NoSelection
+
+        Caret (i :: rest) ->
+            if i == index then
+                Caret rest
+
+            else
+                NoSelection
+
+        Caret [] ->
+            NoSelection
+
+        NoSelection ->
+            selection
+
+
+
+-- HtmlPosition and operators
 
 
 type alias HtmlPosition =
     List Int
 
 
-listToHtml htmlList =
-    List.map nodeToHtml htmlList
+decodeHtmlPosition =
+    Decode.list Decode.int
+
+
+encodeHtmlPosition pos =
+    Encode.list Encode.int pos
+
+
+type Comparison
+    = GreaterThan
+    | LessThan
+    | Equal
+
+
+cmpHtmlPosition left right =
+    case ( left, right ) of
+        ( l :: lrest, r :: rrest ) ->
+            if l == r then
+                cmpHtmlPosition lrest rrest
+
+            else if l < r then
+                LessThan
+
+            else
+                GreaterThan
+
+        ( n :: lrest, [] ) ->
+            if n > 0 then
+                GreaterThan
+
+            else
+                cmpHtmlPosition lrest []
+
+        ( [], n :: rrest ) ->
+            if n > 0 then
+                LessThan
+
+            else
+                cmpHtmlPosition rrest []
+
+        ( [], [] ) ->
+            Equal
+
+
+
+-- CERange and operators -- this is what custom-editable.js talks in terms of
+
+
+type alias CERange =
+    { anchor : HtmlPosition, focus : HtmlPosition }
+
+
+decodeCERange =
+    Decode.map2 CERange (Decode.field "anchor" decodeHtmlPosition) (Decode.field "focus" decodeHtmlPosition)
+
+
+encodeCERange range =
+    Encode.object [ ( "anchor", encodeHtmlPosition range.anchor ), ( "focus", encodeHtmlPosition range.focus ) ]
+
+
+
+-- Descending a selection range
+
+
+descendRange : Int -> HtmlPosition -> HtmlPosition -> Maybe ( HtmlPosition, HtmlPosition )
+descendRange index left right =
+    case ( left, right ) of
+        ( l :: lrest, r :: rrest ) ->
+            if index == l then
+                if index == r then
+                    Just <| ( lrest, rrest )
+
+                else
+                    Just <| ( lrest, [] )
+
+            else if index == r then
+                Just <| ( [], rrest )
+
+            else if index > l && index < r then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( l :: lrest, [] ) ->
+            if index == l then
+                Just <| ( lrest, [] )
+
+            else if index > l then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( [], r :: rrest ) ->
+            if index == r then
+                Just <| ( [], rrest )
+
+            else if index < r then
+                Just <| ( [], [] )
+
+            else
+                Nothing
+
+        ( [], [] ) ->
+            Just <| ( [], [] )
+
+
+
+-- Ill-sorted stuff below here TODO organize this
 
 
 nodeToHtml html =
@@ -119,28 +307,8 @@ nodeToHtml html =
             Html.text text
 
 
-decodeOptionalRange =
-    Decode.nullable decodeRange
-
-
-decodeRange =
-    Decode.map2 Range (Decode.field "start" decodeHtmlPosition) (Decode.field "end" decodeHtmlPosition)
-
-
-encodeOptionalRange range =
-    range |> Maybe.map encodeRange |> Maybe.withDefault Encode.null
-
-
-encodeRange range =
-    Encode.object [ ( "start", encodeHtmlPosition range.start ), ( "end", encodeHtmlPosition range.end ) ]
-
-
-decodeHtmlPosition =
-    Decode.list Decode.int
-
-
-encodeHtmlPosition pos =
-    Encode.list Encode.int pos
+listToHtml htmlList =
+    List.map nodeToHtml htmlList
 
 
 
@@ -225,35 +393,26 @@ decodeHtml =
             )
 
 
-view attrs (Model state) =
+editable attrs msg state =
     Html.node "custom-editable"
         ([ Html.Events.stopPropagationOn
             "edited"
             (Decode.map2 Tuple.pair
-                (Decode.map2 Edited
-                    (Decode.field "detail" (Decode.field "html" decodeHtmlList))
-                    (Decode.field "detail" (Decode.field "selection" decodeOptionalRange))
+                (Decode.map msg
+                    (Decode.map2 State
+                        (Decode.field "detail" (Decode.field "html" decodeHtmlList))
+                        (Decode.field "detail" (Decode.field "selection" decodeSelection))
+                    )
                 )
                 (Decode.succeed True)
             )
-         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeOptionalRange state.selection))
+         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
          ]
             ++ attrs
         )
         (listToHtml (Debug.log "State html" state.html))
 
 
-update : Msg -> Model -> Model
-update msg (Model state) =
-    case msg of
-        Edited htmlList selection ->
-            Model { state | html = htmlList, selection = selection }
-
-
-init : HtmlList -> Model
+init : HtmlList -> State
 init htmlList =
-    Model { html = htmlList, selection = Nothing }
-
-
-type Msg
-    = Edited HtmlList (Maybe Range)
+    { html = htmlList, selection = NoSelection }

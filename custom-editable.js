@@ -10,7 +10,9 @@ class CustomEditable extends HTMLElement {
       if (node) {
         let nodePath = [offset];
 
-        while (node != this.shadowRoot && node.parentNode ) {
+        let div = this.shadowRoot.querySelectorAll('div')[0];
+
+        while (node != div && node.parentNode ) {
             const index = Array.from(node.parentNode.childNodes).indexOf(node);
             nodePath.unshift(index);
             node = node.parentNode;
@@ -44,8 +46,8 @@ class CustomEditable extends HTMLElement {
       let elmRange = null;
 
       if (range) {
-        elmRange = {end: self.nodePath(range.focusOffset, range.focusNode), 
-          start: self.nodePath(range.anchorOffset, range.anchorNode)};
+        elmRange = {focus: self.nodePath(range.focusOffset, range.focusNode), 
+          anchor: self.nodePath(range.anchorOffset, range.anchorNode)};
       }
 
       const event = new CustomEvent('edited', { composed: true, bubbles: true, detail: {html: div.childNodes, selection: elmRange}});
@@ -56,7 +58,7 @@ class CustomEditable extends HTMLElement {
 
     self.slotObserver = new MutationObserver(() => {console.log("Slot subnode mutation event"); self.onSlotChanged()});
 
-    //document.addEventListener('selectionchange', () => {console.log("Selection event"); emitEdited();});
+    document.addEventListener('selectionchange', () => {console.log("Selection event"); onInput();});
   }
 
   connectedCallback() {
@@ -97,23 +99,23 @@ class CustomEditable extends HTMLElement {
     let range = null;
 
     if (elmRange) {
-      const startPath = elmRange.start;
-      const endPath = elmRange.end;
-      let startNode = self.shadowRoot;
-      while (startPath.length > 1) {
-        startNode = startNode.childNodes[startPath.shift()];
+      const anchorPath = elmRange.anchor;
+      const focusPath = elmRange.focus;
+      let anchorNode = div;
+      while (anchorPath.length > 1) {
+        anchorNode = anchorNode.childNodes[anchorPath.shift()];
       }
       
-      let endNode = self.shadowRoot;
-      while (endPath.length > 1) {
-        endNode = endNode.childNodes[endPath.shift()];
+      let focusNode = div;
+      while (focusPath.length > 1) {
+        focusNode = focusNode.childNodes[focusPath.shift()];
       }
 
       range = {
-        anchorNode: startNode,
-        anchorOffset: startPath.shift(),
-        focusNode: endNode,
-        focusOffset: endPath.shift()
+        anchorNode: anchorNode,
+        anchorOffset: anchorPath.shift(),
+        focusNode: focusNode,
+        focusOffset: focusPath.shift()
       }
     }
     jhb.setSelectionRange(self.shadowRoot, range);
