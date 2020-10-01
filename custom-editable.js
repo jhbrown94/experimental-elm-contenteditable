@@ -193,6 +193,7 @@ class CustomEditable extends HTMLElement {
     const self = this;
     const div = document.createElement("div");
     div.setAttribute("contenteditable", "");
+    div.setAttribute("style", "width: 100%; height: 100%;");
     self.appendChild(div);
     self._div = div;
     div.addEventListener("input", (e) => self.onInput(e));
