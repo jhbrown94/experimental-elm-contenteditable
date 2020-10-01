@@ -38,6 +38,7 @@ import Element.Input as EI
 import Html
 import Html.Attributes
 import Html.Events
+import HtmlLite as Lite
 import Json.Decode as Decode
 import Json.Encode as Encode
 
@@ -91,19 +92,19 @@ viewNodes : Editable.State -> List (E.Element Msg)
 viewNodes state =
     let
         viewAttributes attrs =
-            List.map (\a -> a.name ++ "=\"" ++ a.value ++ "\"") attrs |> String.join " "
+            List.map (\( name, value ) -> name ++ "=\"" ++ value ++ "\"") attrs |> String.join " "
 
         viewNode ( node, selection ) =
             case node of
-                Just (Editable.Element kind attrs children) ->
+                Just (Lite.HtmlNode tag attrs children) ->
                     E.column [ E.width E.fill ]
-                        [ E.text <| "<" ++ kind ++ " " ++ viewAttributes attrs ++ ">\n"
+                        [ E.text <| "<" ++ tag ++ " " ++ viewAttributes attrs ++ ">\n"
                         , E.column [ E.width E.fill, E.paddingEach { left = 16, right = 0, top = 0, bottom = 0 } ] <|
                             viewNodes { selection = selection, html = children }
-                        , E.text <| "</" ++ kind ++ ">\n"
+                        , E.text <| "</" ++ tag ++ ">\n"
                         ]
 
-                Just (Editable.Text text) ->
+                Just (Lite.TextNode text) ->
                     E.paragraph [ E.width E.fill ]
                         ([ E.text "#text(" ]
                             ++ (case selection of
@@ -202,11 +203,11 @@ demoFilter htmlList =
     List.map
         (\n ->
             case n of
-                Editable.Text value ->
-                    Editable.Text (String.replace "teh " "the " value)
+                Lite.TextNode value ->
+                    Lite.TextNode (String.replace "teh " "the " value)
 
-                Editable.Element k a c ->
-                    Editable.Element k a (demoFilter c)
+                Lite.HtmlNode k a c ->
+                    Lite.HtmlNode k a (demoFilter c)
         )
         htmlList
 
@@ -215,11 +216,11 @@ removeAttributes htmlList =
     List.map
         (\n ->
             case n of
-                Editable.Text value ->
+                Lite.TextNode value ->
                     n
 
-                Editable.Element k a c ->
-                    Editable.Element k [] (removeAttributes c)
+                Lite.HtmlNode k a c ->
+                    Lite.HtmlNode k [] (removeAttributes c)
         )
         htmlList
 
@@ -238,7 +239,7 @@ init : String -> ( Model, Cmd Msg )
 init flag =
     ( Model flag
         (Editable.init
-            [ Editable.Element "i" [] [ Editable.Text "hello world from Elm" ]
+            [ Lite.HtmlNode "i" [] [ Lite.TextNode "hello world from Elm" ]
             ]
         )
     , Cmd.none

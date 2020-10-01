@@ -28,8 +28,7 @@
 
 
 module Editable exposing
-    ( Html(..)
-    , Selection(..)
+    ( Selection(..)
     , State
     , descendState
     , editable
@@ -44,6 +43,7 @@ import Browser
 import Html
 import Html.Attributes
 import Html.Events
+import HtmlLite exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
 
@@ -77,7 +77,7 @@ editable attrs msg state =
 -- Initial state for an editable
 
 
-init : HtmlList -> State
+init : List Html -> State
 init htmlList =
     { html = htmlList, selection = NoSelection }
 
@@ -87,7 +87,7 @@ init htmlList =
 
 
 type alias State =
-    { html : HtmlList
+    { html : List Html
     , selection : Selection
     }
 
@@ -115,14 +115,14 @@ htmlToString indent html =
             String.repeat indent "    "
     in
     case html of
-        Element kind attrs children ->
-            prefix ++ "<" ++ kind ++ attributesToString indent attrs ++ ">\n" ++ htmlListToString (indent + 1) children ++ prefix ++ "</" ++ kind ++ ">\n"
+        HtmlNode tag attrs children ->
+            prefix ++ "<" ++ tag ++ attributesToString indent attrs ++ ">\n" ++ htmlListToString (indent + 1) children ++ prefix ++ "</" ++ tag ++ ">\n"
 
-        Text text ->
+        TextNode text ->
             prefix ++ text ++ "\n"
 
 
-htmlListToString : Int -> HtmlList -> String
+htmlListToString : Int -> List Html -> String
 htmlListToString indent htmlList =
     List.foldl (\n a -> a ++ htmlToString indent n) "" htmlList
 
@@ -131,21 +131,12 @@ htmlListToString indent htmlList =
 -- Html for CE's.
 
 
-type Html
-    = Element Kind Attributes HtmlList
-    | Text String
-
-
-type alias Kind =
-    String
-
-
 nodeToHtml html =
     case html of
-        Element kind attributes children ->
-            Html.node kind (List.map (\{ name, value } -> Html.Attributes.attribute name value) attributes) (listToHtml children)
+        HtmlNode tag attributes children ->
+            Html.node tag (List.map (\( name, value ) -> Html.Attributes.attribute name value) attributes) (listToHtml children)
 
-        Text text ->
+        TextNode text ->
             Html.text text
 
 
@@ -153,8 +144,8 @@ listToHtml htmlList =
     List.map nodeToHtml htmlList
 
 
-decodeHtmlElement =
-    Decode.map3 Element
+decodeHtmlNode =
+    Decode.map3 HtmlNode
         (Decode.field "tagName" Decode.string)
         (Decode.field "attributes" decodeAttributes)
         (Decode.field "childNodes" decodeHtmlList)
@@ -165,15 +156,15 @@ decodeAttributes =
 
 
 decodeAttribute =
-    Decode.map2 Attribute (Decode.field "name" Decode.string) (Decode.field "value" Decode.string)
+    Decode.map2 Tuple.pair (Decode.field "name" Decode.string) (Decode.field "value" Decode.string)
 
 
 decodeHtmlList =
     Decode.keyValuePairs decodeHtml |> Decode.map (List.map Tuple.second)
 
 
-decodeHtmlText =
-    Decode.map Text (Decode.field "data" Decode.string)
+decodeTextNode =
+    Decode.map TextNode (Decode.field "data" Decode.string)
 
 
 decodeHtml =
@@ -182,11 +173,11 @@ decodeHtml =
             (\nodeName ->
                 case nodeName of
                     "#text" ->
-                        decodeHtmlText
+                        decodeTextNode
 
                     -- TODO: there could be non-tagname things, see https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeName
                     tagName ->
-                        decodeHtmlElement
+                        decodeHtmlNode
             )
 
 
@@ -194,22 +185,8 @@ decodeHtml =
 -- Attributes for the Html
 
 
-type alias Attribute =
-    { name : String
-    , value : String
-    }
-
-
-type alias Attributes =
-    List Attribute
-
-
-type alias HtmlList =
-    List Html
-
-
-attributeToString attr =
-    attr.name ++ " = \"" ++ attr.value ++ "\""
+attributeToString ( name, value ) =
+    name ++ " = \"" ++ value ++ "\""
 
 
 attributesToString indent attrs =
