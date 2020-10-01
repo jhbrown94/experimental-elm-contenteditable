@@ -46,6 +46,10 @@ a =
     HtmlNode "a"
 
 
+encodeHtmlList htmllist =
+    Encode.list encodeHtml htmllist
+
+
 encodeHtml html =
     let
         ( dataType, data ) =

@@ -43,7 +43,7 @@ import Browser
 import Html
 import Html.Attributes
 import Html.Events
-import HtmlLite exposing (..)
+import HtmlLite as Lite exposing (..)
 import Json.Decode as Decode
 import Json.Encode as Encode
 
@@ -55,22 +55,12 @@ import Json.Encode as Encode
 editable : List (Html.Attribute msg) -> (State -> msg) -> State -> Html.Html msg
 editable attrs msg state =
     Html.node "custom-editable"
-        ([ Html.Events.stopPropagationOn
-            "edited"
-            (Decode.map2 Tuple.pair
-                (Decode.map msg
-                    (Decode.map2 State
-                        (Decode.field "detail" (Decode.field "html" decodeHtmlList))
-                        (Decode.field "detail" (Decode.field "selection" decodeSelection))
-                    )
-                )
-                (Decode.succeed True)
-            )
-         , Html.Attributes.attribute "selection" (Encode.encode 0 (encodeSelection state.selection))
+        ([ Html.Attributes.property "content" (Lite.encodeHtmlList state.html)
+         , Html.Attributes.property "selection" (encodeSelection state.selection)
          ]
             ++ attrs
         )
-        (listToHtml state.html)
+        []
 
 
 
