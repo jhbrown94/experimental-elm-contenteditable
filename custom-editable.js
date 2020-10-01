@@ -62,7 +62,6 @@ function parseLiteHtml(node) {
 
 function equalSelections(left, right) {
   if (left === right) {
-    console.log("Identical objectx");
     return true;
   }
 
@@ -85,8 +84,6 @@ function equalPaths(left, right) {
       return false;
     }
   }
-
-  console.log("Elementwise equal", left, right);
   return true;
 }
 
@@ -130,7 +127,6 @@ class CustomEditable extends HTMLElement {
 
       set(state) {
         self._state = state;
-        console.log("Set selection state from elm", state.selection);
         if (!self._div) {
           return;
         }
@@ -202,7 +198,6 @@ class CustomEditable extends HTMLElement {
     div.addEventListener("input", (e) => self.onInput(e));
 
     // Trigger property update.  Ugly hack, TODO pull out the update into its own function and call it.
-    console.log("Just once, set the state manually", self._state);
     self.state = self._state;
   }
 
@@ -210,7 +205,6 @@ class CustomEditable extends HTMLElement {
     const self = this;
     const currentSelection = self.getElmishSelection();
     if (equalSelections(currentSelection, self.state.selection)) {
-      console.log("Early selection bail");
       return;
     }
     self.onInput(e);
@@ -247,11 +241,6 @@ class CustomEditable extends HTMLElement {
       detail: { html: div.childNodes, selection: elmRange },
     });
 
-    console.log(
-      "Selection states old and emitted",
-      self.state.selection,
-      elmRange
-    );
     div.dispatchEvent(event);
   }
 }
