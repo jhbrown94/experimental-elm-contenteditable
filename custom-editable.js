@@ -44,6 +44,23 @@
 
 const jhb = require("@jhbrown94/selectionrange");
 
+function parseLiteHtml(node) {
+  switch (node.type) {
+    case "TextNode":
+      return document.createTextNode(node.data.data);
+    case "HtmlNode":
+      const result = document.createElement(node.data.tag);
+      for (const [name, value] of node.data.attributes) {
+        result.setAttribute(name, value);
+      }
+      for (const child of node.data.children) {
+        result.appendChild(parseLiteHtml(child));
+      }
+      return result;
+    default:
+      return document.createTextNode("UNABLE TO PARSE HTMLITE");
+  }
+}
 class CustomEditable extends HTMLElement {
   // Computes the path to a node as a series of integers, since we can't pass JS references into Elm.
   nodePath(offset, node) {
@@ -57,7 +74,6 @@ class CustomEditable extends HTMLElement {
         nodePath.unshift(index);
         node = node.parentNode;
       }
-
       return nodePath;
     }
     return null;
@@ -72,20 +88,64 @@ class CustomEditable extends HTMLElement {
     shadowRoot.appendChild(templateContent.cloneNode(true));
 
     let div = shadowRoot.querySelectorAll("div")[0];
-    let slot = shadowRoot.querySelectorAll("slot")[0];
-
-    // Watch for top-level slot nodes getting moved around
-    slot.addEventListener("slotchange", () => self.onSlotChanged());
-
     div.addEventListener("input", (e) => self.onInput(e));
 
-    self.slotObserver = new MutationObserver((e) => self.onSlotChanged(e));
-
     document.addEventListener("selectionchange", (e) => self.onInput(e));
+
+    Object.defineProperty(self, "state", {
+      get() {
+        console.log("getting state", this._state);
+        return this._state;
+      },
+
+      set(state) {
+        this._state = state;
+        console.log("setting state", this._state);
+
+        // Remove old div content
+        while (div.childNodes.length > 0) {
+          div.removeChild(div.childNodes[0]);
+        }
+
+        // Shovel in new content
+        console.log("html is", state.html);
+        for (const node of state.html) {
+          console.log("Processing node", node);
+          div.appendChild(parseLiteHtml(node));
+        }
+
+        const elmRange = state.selection;
+
+        let range = null;
+
+        if (elmRange) {
+          const anchorPath = elmRange.anchor;
+          const focusPath = elmRange.focus;
+          let anchorNode = div;
+          while (anchorPath.length > 1) {
+            anchorNode = anchorNode.childNodes[anchorPath.shift()];
+          }
+
+          let focusNode = div;
+          while (focusPath.length > 1) {
+            focusNode = focusNode.childNodes[focusPath.shift()];
+          }
+
+          range = {
+            anchorNode: anchorNode,
+            anchorOffset: anchorPath.shift(),
+            focusNode: focusNode,
+            focusOffset: focusPath.shift(),
+          };
+        }
+        jhb.setSelectionRange(self.shadowRoot, range);
+      },
+    });
   }
 
   // User input happened.  Emit HTML and Selection in a custom event.
   onInput(e) {
+    console.log("Input", e);
     const self = this;
     const range = jhb.getSelectionRange(self.shadowRoot);
     let elmRange = null;
@@ -105,60 +165,6 @@ class CustomEditable extends HTMLElement {
       detail: { html: div.childNodes, selection: elmRange },
     });
     div.dispatchEvent(event);
-  }
-
-  // Something changed the slot contents.  Copy it into the visible body.
-  onSlotChanged(e) {
-    const self = this;
-
-    let slot = self.shadowRoot.querySelectorAll("slot")[0];
-    let div = self.shadowRoot.querySelectorAll("div")[0];
-
-    while (div.childNodes.length > 0) {
-      div.removeChild(div.childNodes[0]);
-    }
-
-    // TODO: lots of ways to make this more efficient.
-    self.slotObserver.disconnect();
-    for (const node of slot.assignedNodes()) {
-      div.appendChild(node.cloneNode(true));
-
-      // Monitor the new children for any mutations.
-      self.slotObserver.observe(node, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        characterData: true,
-        attributeOldValue: true,
-        characterDataOldValue: true,
-      });
-    }
-
-    const elmRange = JSON.parse(self.getAttribute("selection"));
-
-    let range = null;
-
-    if (elmRange) {
-      const anchorPath = elmRange.anchor;
-      const focusPath = elmRange.focus;
-      let anchorNode = div;
-      while (anchorPath.length > 1) {
-        anchorNode = anchorNode.childNodes[anchorPath.shift()];
-      }
-
-      let focusNode = div;
-      while (focusPath.length > 1) {
-        focusNode = focusNode.childNodes[focusPath.shift()];
-      }
-
-      range = {
-        anchorNode: anchorNode,
-        anchorOffset: anchorPath.shift(),
-        focusNode: focusNode,
-        focusOffset: focusPath.shift(),
-      };
-    }
-    jhb.setSelectionRange(self.shadowRoot, range);
   }
 }
 

@@ -55,12 +55,26 @@ import Json.Encode as Encode
 editable : List (Html.Attribute msg) -> (State -> msg) -> State -> Html.Html msg
 editable attrs msg state =
     Html.node "custom-editable"
-        ([ Html.Attributes.property "content" (Lite.encodeHtmlList state.html)
-         , Html.Attributes.property "selection" (encodeSelection state.selection)
+        ([ Html.Attributes.property "state" (encodeState state)
+         , Html.Events.stopPropagationOn
+            "edited"
+            (Decode.map2 Tuple.pair
+                (Decode.map msg
+                    (Decode.map2 State
+                        (Decode.field "detail" (Decode.field "html" decodeDomHtmlList))
+                        (Decode.field "detail" (Decode.field "selection" decodeSelection))
+                    )
+                )
+                (Decode.succeed True)
+            )
          ]
             ++ attrs
         )
         []
+
+
+encodeState state =
+    Encode.object [ ( "html", Lite.encodeHtmlList state.html ), ( "selection", encodeSelection state.selection ) ]
 
 
 
@@ -134,11 +148,11 @@ listToHtml htmlList =
     List.map nodeToHtml htmlList
 
 
-decodeHtmlNode =
+decodeDomHtmlNode =
     Decode.map3 HtmlNode
         (Decode.field "tagName" Decode.string)
         (Decode.field "attributes" decodeAttributes)
-        (Decode.field "childNodes" decodeHtmlList)
+        (Decode.field "childNodes" decodeDomHtmlList)
 
 
 decodeAttributes =
@@ -149,7 +163,7 @@ decodeAttribute =
     Decode.map2 Tuple.pair (Decode.field "name" Decode.string) (Decode.field "value" Decode.string)
 
 
-decodeHtmlList =
+decodeDomHtmlList =
     Decode.keyValuePairs decodeHtml |> Decode.map (List.map Tuple.second)
 
 
@@ -167,7 +181,7 @@ decodeHtml =
 
                     -- TODO: there could be non-tagname things, see https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeName
                     tagName ->
-                        decodeHtmlNode
+                        decodeDomHtmlNode
             )
 
 
