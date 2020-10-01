@@ -59,7 +59,7 @@ editable attrs msg state =
          , Html.Events.stopPropagationOn
             "edited"
             (Decode.map2 Tuple.pair
-                (Decode.map msg
+                (Decode.map (Debug.log "Decoded event" >> msg)
                     (Decode.map2 State
                         (Decode.field "detail" (Decode.field "html" decodeDomHtmlList))
                         (Decode.field "detail" (Decode.field "selection" decodeSelection))

@@ -35,14 +35,12 @@
 // should also be able filter/modify the state before writing itŒ back into
 // the slot in order to mutate the contenteditable.
 
-// Implementation:  This file implements a custom element.  That contains a
-// shadowRoot, which in turn contains a hidden slot and a visible div with
-// contenteditable=true. When the slot's contents chnage, they are cloned into
-// the visible contenteditable.   In the other direction, when the user does
+// Implementation:  This file implements a custom element which contains a  div with
+// contenteditable=true and a custom `state` property containing HTML and selection state
+// from Elm.  When that property's contents chnage, they are propagated into
+// the contenteditable and selection state.   In the other direction, when the user does
 // input operations in the contenteditable, the contents of that
 // contenteditable, along with the current selection, are emitted as an event.
-
-const jhb = require("@jhbrown94/selectionrange");
 
 function parseLiteHtml(node) {
   switch (node.type) {
@@ -61,19 +59,57 @@ function parseLiteHtml(node) {
       return document.createTextNode("UNABLE TO PARSE HTMLITE");
   }
 }
+
+function equalSelections(left, right) {
+  if (left === right) {
+    console.log("Identical objectx");
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    equalPaths(left.focus, right.focus) && equalPaths(left.anchor, right.anchor)
+  );
+}
+
+function equalPaths(left, right) {
+  if (left.length != right.length) {
+    return false;
+  }
+
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] != right[i]) {
+      return false;
+    }
+  }
+
+  console.log("Elementwise equal", left, right);
+  return true;
+}
+
 class CustomEditable extends HTMLElement {
   // Computes the path to a node as a series of integers, since we can't pass JS references into Elm.
   nodePath(offset, node) {
+    const self = this;
+
     if (node) {
       let nodePath = [offset];
 
-      let div = this.shadowRoot.querySelectorAll("div")[0];
+      let div = self._div;
 
       while (node != div && node.parentNode) {
         const index = Array.from(node.parentNode.childNodes).indexOf(node);
         nodePath.unshift(index);
         node = node.parentNode;
       }
+      // If we never found the div, we weren't in the contenteditable to begin with
+      if (!node.parentNode) {
+        return null;
+      }
+
       return nodePath;
     }
     return null;
@@ -82,25 +118,23 @@ class CustomEditable extends HTMLElement {
   constructor() {
     super();
     const self = this;
-    var shadowRoot = self.attachShadow({ mode: "open" });
-    let template = document.getElementById("editable-template");
-    let templateContent = template.content;
-    shadowRoot.appendChild(templateContent.cloneNode(true));
 
-    let div = shadowRoot.querySelectorAll("div")[0];
-    div.addEventListener("input", (e) => self.onInput(e));
-
-    document.addEventListener("selectionchange", (e) => self.onInput(e));
+    document.addEventListener("selectionchange", (e) =>
+      self.onSelectionChange(e)
+    );
 
     Object.defineProperty(self, "state", {
       get() {
-        console.log("getting state", this._state);
-        return this._state;
+        return self._state;
       },
 
       set(state) {
-        this._state = state;
-        console.log("setting state", this._state);
+        self._state = state;
+        console.log("Set selection state from elm", state.selection);
+        if (!self._div) {
+          return;
+        }
+        const div = self._div;
 
         // Remove old div content
         while (div.childNodes.length > 0) {
@@ -108,9 +142,7 @@ class CustomEditable extends HTMLElement {
         }
 
         // Shovel in new content
-        console.log("html is", state.html);
         for (const node of state.html) {
-          console.log("Processing node", node);
           div.appendChild(parseLiteHtml(node));
         }
 
@@ -119,8 +151,8 @@ class CustomEditable extends HTMLElement {
         let range = null;
 
         if (elmRange) {
-          const anchorPath = elmRange.anchor;
-          const focusPath = elmRange.focus;
+          const anchorPath = Array.from(elmRange.anchor);
+          const focusPath = Array.from(elmRange.focus);
           let anchorNode = div;
           while (anchorPath.length > 1) {
             anchorNode = anchorNode.childNodes[anchorPath.shift()];
@@ -138,32 +170,88 @@ class CustomEditable extends HTMLElement {
             focusOffset: focusPath.shift(),
           };
         }
-        jhb.setSelectionRange(self.shadowRoot, range);
+        const selection = window.getSelection();
+        if (!range && !selection.anchorNode) {
+          return;
+        }
+        if (range && selection.rangeCount > 0) {
+          if (
+            range.anchorNode === selection.anchorNode &&
+            range.anchorOffset === selection.anchorOffset &&
+            range.focusNode === selection.focusNode &&
+            range.focusOffset === selection.focusOffset
+          ) {
+            return;
+          }
+        }
+        selection.removeAllRanges();
+        if (range) {
+          selection.collapse(range.anchorNode, range.anchorOffset);
+          selection.extend(range.focusNode, range.focusOffset);
+        }
       },
     });
   }
 
+  connectedCallback() {
+    const self = this;
+    const div = document.createElement("div");
+    div.setAttribute("contenteditable", "");
+    self.appendChild(div);
+    self._div = div;
+    div.addEventListener("input", (e) => self.onInput(e));
+
+    // Trigger property update.  Ugly hack, TODO pull out the update into its own function and call it.
+    console.log("Just once, set the state manually", self._state);
+    self.state = self._state;
+  }
+
+  onSelectionChange(e) {
+    const self = this;
+    const currentSelection = self.getElmishSelection();
+    if (equalSelections(currentSelection, self.state.selection)) {
+      console.log("Early selection bail");
+      return;
+    }
+    self.onInput(e);
+  }
+
+  getElmishSelection() {
+    const self = this;
+    const selection = document.getSelection();
+    let elmRange = {
+      focus: self.nodePath(selection.focusOffset, selection.focusNode),
+      anchor: self.nodePath(selection.anchorOffset, selection.anchorNode),
+    };
+
+    if (!elmRange.focus || !elmRange.anchor) {
+      elmRange = null;
+    }
+    return elmRange;
+  }
+
   // User input happened.  Emit HTML and Selection in a custom event.
   onInput(e) {
-    console.log("Input", e);
     const self = this;
-    const range = jhb.getSelectionRange(self.shadowRoot);
-    let elmRange = null;
 
-    if (range) {
-      elmRange = {
-        focus: self.nodePath(range.focusOffset, range.focusNode),
-        anchor: self.nodePath(range.anchorOffset, range.anchorNode),
-      };
+    if (!self._div) {
+      return;
     }
+    const div = self._div;
 
-    let div = self.shadowRoot.querySelectorAll("div")[0];
+    const elmRange = self.getElmishSelection();
 
     const event = new CustomEvent("edited", {
       composed: true,
       bubbles: true,
       detail: { html: div.childNodes, selection: elmRange },
     });
+
+    console.log(
+      "Selection states old and emitted",
+      self.state.selection,
+      elmRange
+    );
     div.dispatchEvent(event);
   }
 }
